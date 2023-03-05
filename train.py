@@ -13,8 +13,8 @@ import torch.nn as nn
 from gym import spaces
 from gym.wrappers import TimeLimit
 from luxai_s2.state import ObservationStateDict, StatsStateDict
-from luxai_s2.utils.heuristics.factory_placement import place_near_random_ice
-from luxai_s2.wrappers import SB3Wrapper
+
+#from luxai_s2.wrappers import SB3Wrapper
 from stable_baselines3.common.callbacks import (
     BaseCallback,
     CheckpointCallback,
@@ -30,8 +30,8 @@ from stable_baselines3.common.vec_env import (
 )
 from stable_baselines3.ppo import PPO
 
-from wrappers import SimpleUnitDiscreteController, SimpleUnitObservationWrapper
-
+from wrappers import SimpleUnitDiscreteController, SimpleUnitObservationWrapper, SB3Wrapper
+from agent import place_factory
 
 class CustomEnvWrapper(gym.Wrapper):
     def __init__(self, env: gym.Env) -> None:
@@ -154,7 +154,7 @@ def make_env(env_id: str, rank: int, seed: int = 0, max_episode_steps=100):
 
         env = SB3Wrapper(
             env,
-            factory_placement_policy=place_near_random_ice,
+            factory_placement_policy=place_factory,
             controller=SimpleUnitDiscreteController(env.env_cfg),
         )
         env = SimpleUnitObservationWrapper(

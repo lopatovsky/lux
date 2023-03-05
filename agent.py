@@ -13,11 +13,65 @@ import torch as th
 from stable_baselines3.ppo import PPO
 from lux.config import EnvConfig
 from wrappers import SimpleUnitDiscreteController, SimpleUnitObservationWrapper
+from luxai_s2.state import ObservationStateDict
 
 # change this to use weights stored elsewhere
 # make sure the model weights are submitted with the other code files
 # any files in the logs folder are not necessary. Make sure to exclude the .zip extension here
 MODEL_WEIGHTS_RELATIVE_PATH = "./best_model"
+
+def Valid(i, j):
+    return i >= 0 and j >= 0 and i < 48 and j < 48
+
+
+def AdjToFactory(x, y, i, j):
+    dist_x = abs(x - i)
+    dist_y = abs(y - j)
+    if dist_x == 2 and dist_y == 2: return False
+    if dist_x == 2 or dist_y == 2: return True
+    return False
+
+def place_factory(player, obs: ObservationStateDict):
+    my_obs = obs["teams"][player]
+    board = obs["board"]
+
+    # print(step, self.player, file=sys.stderr)
+    # print("hello", self.env_cfg, file=sys.stderr)
+
+    if my_obs["metal"] == 0:
+        return dict()
+
+    potential_spawns = list(zip(*np.where(board["valid_spawns_mask"] == 1)))
+
+    pos = potential_spawns[np.random.randint(0, len(potential_spawns))]
+
+    lowest_rubble = 101
+
+    # Find location that is adjacent to ice with minimal rubble available
+    for spawn_loc in potential_spawns:
+        x, y = spawn_loc
+        min_rubble = 100
+        count_zeros = 0
+        has_ice = False
+        for i in range(x - 2, x + 3):
+            for j in range(y - 2, y + 2):
+                if not Valid(i, j):
+                    continue
+                if AdjToFactory(x, y, i, j):
+                    if board["ice"][i, j] == 1:
+                        has_ice = True
+                    min_rubble = min(min_rubble, board["rubble"][i, j])
+                    if board["rubble"][i, j] == 0:
+                        count_zeros += 1
+        min_rubble -= count_zeros  # count_zeros is nonzero only if min_rubble is 0.
+        if has_ice and min_rubble < lowest_rubble:
+            lowest_rubble = min_rubble
+            pos = spawn_loc
+
+    metal = min(150, my_obs["metal"])
+    water = min(150, my_obs["water"])
+    return dict(spawn=pos, metal=metal, water=water)
+
 
 class Agent:
     def __init__(self, player: str, env_cfg: EnvConfig) -> None:
@@ -36,41 +90,49 @@ class Agent:
         return dict(faction="AlphaStrike", bid=0)
 
     def factory_placement_policy(self, step: int, obs, remainingOverageTime: int = 60):
-        # the policy here is the same one used in the RL tutorial: https://www.kaggle.com/code/stonet2000/rl-with-lux-2-rl-problem-solving
-        if obs["teams"][self.player]["metal"] == 0:
+        """
+        This policy will place a single factory with all the starting resources
+        near a random ice tile
+        """
+        my_obs = obs["teams"][self.player]
+        board = obs["board"]
+
+        # print(step, self.player, file=sys.stderr)
+        # print("hello", self.env_cfg, file=sys.stderr)
+
+        if my_obs["metal"] == 0:
             return dict()
-        potential_spawns = list(zip(*np.where(obs["board"]["valid_spawns_mask"] == 1)))
-        potential_spawns_set = set(potential_spawns)
-        done_search = False
 
-        ice_diff = np.diff(obs["board"]["ice"])
-        pot_ice_spots = np.argwhere(ice_diff == 1)
-        if len(pot_ice_spots) == 0:
-            pot_ice_spots = potential_spawns
-        trials = 5
-        while trials > 0:
-            pos_idx = np.random.randint(0, len(pot_ice_spots))
-            pos = pot_ice_spots[pos_idx]
+        potential_spawns = list(zip(*np.where(board["valid_spawns_mask"] == 1)))
 
-            area = 3
-            for x in range(area):
-                for y in range(area):
-                    check_pos = [pos[0] + x - area // 2, pos[1] + y - area // 2]
-                    if tuple(check_pos) in potential_spawns_set:
-                        done_search = True
-                        pos = check_pos
-                        break
-                if done_search:
-                    break
-            if done_search:
-                break
-            trials -= 1
-        spawn_loc = potential_spawns[np.random.randint(0, len(potential_spawns))]
-        if not done_search:
-            pos = spawn_loc
+        pos = potential_spawns[np.random.randint(0, len(potential_spawns))]
 
-        metal = obs["teams"][self.player]["metal"]
-        return dict(spawn=pos, metal=metal, water=metal)
+        lowest_rubble = 101
+
+        # Find location that is adjacent to ice with minimal rubble available
+        for spawn_loc in potential_spawns:
+            x, y = spawn_loc
+            min_rubble = 100
+            count_zeros = 0
+            has_ice = False
+            for i in range(x - 2, x + 3):
+                for j in range(y - 2, y + 2):
+                    if not Valid(i, j):
+                        continue
+                    if AdjToFactory(x, y, i, j):
+                        if board["ice"][i, j] == 1:
+                            has_ice = True
+                        min_rubble = min(min_rubble, board["rubble"][i, j])
+                        if board["rubble"][i, j] == 0:
+                            count_zeros += 1
+            min_rubble -= count_zeros  # count_zeros is nonzero only if min_rubble is 0.
+            if has_ice and min_rubble < lowest_rubble:
+                lowest_rubble = min_rubble
+                pos = spawn_loc
+
+        metal = min(self.env_cfg.INIT_WATER_METAL_PER_FACTORY, my_obs["metal"])
+        water = min(self.env_cfg.INIT_WATER_METAL_PER_FACTORY, my_obs["water"])
+        return dict(spawn=pos, metal=metal, water=water)
 
     def act(self, step: int, obs, remainingOverageTime: int = 60):
         # first convert observations using the same observation wrapper you used for training
@@ -105,11 +167,11 @@ class Agent:
         )
 
         # commented code below adds watering lichen which can easily improve your agent
-        # shared_obs = raw_obs[self.player]
-        # factories = shared_obs["factories"][self.player]
-        # for unit_id in factories.keys():
-        #     factory = factories[unit_id]
-        #     if 1000 - step < 50 and factory["cargo"]["water"] > 100:
-        #         lux_action[unit_id] = 2 # water and grow lichen at the very end of the game
+        shared_obs = raw_obs[self.player]
+        factories = shared_obs["factories"][self.player]
+        for unit_id in factories.keys():
+            factory = factories[unit_id]
+            if 1000 - step < 201 and factory["cargo"]["water"] > 200:
+                lux_action[unit_id] = 2 # water and grow lichen at the very end of the game
 
         return lux_action

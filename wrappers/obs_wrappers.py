@@ -35,9 +35,12 @@ class SimpleUnitObservationWrapper(gym.ObservationWrapper):
         ice_map = shared_obs["board"]["ice"]
         ice_tile_locations = np.argwhere(ice_map == 1)
 
+        # ore_map = shared_obs["board"]["ore"]
+        # ore_tile_locations = np.argwhere(ore_map == 1)
+
         for agent in obs.keys():
             obs_vec = np.zeros(
-                13,
+                14,
             )
 
             factories = shared_obs["factories"][agent]
@@ -81,6 +84,17 @@ class SimpleUnitObservationWrapper(gym.ObservationWrapper):
                 closest_ice_tile = (
                     ice_tile_locations[np.argmin(ice_tile_distances)] / env_cfg.map_size
                 )
+
+                # # compute closest ore tile
+                # ore_tile_distances = np.mean(
+                #     (ore_tile_locations - np.array(unit["pos"])) ** 2, 1
+                # )
+                # # normalize the ore tile location
+                # closest_ore_tile = (
+                #         ore_tile_locations[np.argmin(ore_tile_distances)] / env_cfg.map_size
+                # )
+
+
                 obs_vec = np.concatenate(
                     [unit_vec, factory_vec - pos, closest_ice_tile - pos], axis=-1
                 )

@@ -130,6 +130,7 @@ dmypy.json
 .pyre/
 
 /logs
+/.idea
 *.zip
 *.ipynb
 *.html
