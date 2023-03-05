@@ -139,6 +139,8 @@ class Agent:
         # note that SimpleUnitObservationWrapper takes input as the full observation for both players and returns an obs for players
         raw_obs = dict(player_0=obs, player_1=obs)
         obs = SimpleUnitObservationWrapper.convert_obs(raw_obs, env_cfg=self.env_cfg)
+
+        # TODO iterate multiple
         obs = obs[self.player]
 
         obs = th.from_numpy(obs).float()

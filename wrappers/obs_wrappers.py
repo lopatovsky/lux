@@ -20,9 +20,12 @@ class SimpleUnitObservationWrapper(gym.ObservationWrapper):
 
     """
 
+    observation_features = 17
+
     def __init__(self, env: gym.Env) -> None:
         super().__init__(env)
-        self.observation_space = spaces.Box(-999, 999, shape=(13,))
+        self.observation_space = spaces.Box(
+            -999, 999, shape=(SimpleUnitObservationWrapper.observation_features,))
 
     def observation(self, obs):
         return SimpleUnitObservationWrapper.convert_obs(obs, self.env.state.env_cfg)
@@ -35,19 +38,25 @@ class SimpleUnitObservationWrapper(gym.ObservationWrapper):
         ice_map = shared_obs["board"]["ice"]
         ice_tile_locations = np.argwhere(ice_map == 1)
 
-        # ore_map = shared_obs["board"]["ore"]
-        # ore_tile_locations = np.argwhere(ore_map == 1)
+        ore_map = shared_obs["board"]["ore"]
+        ore_tile_locations = np.argwhere(ore_map == 1)
 
+        # TODO each agent has their own observation.
         for agent in obs.keys():
             obs_vec = np.zeros(
-                14,
+                SimpleUnitObservationWrapper.observation_features,
             )
 
             factories = shared_obs["factories"][agent]
             factory_vec = np.zeros(2)
+            factory_cargo = np.zeros(2)
             for k in factories.keys():
                 # here we track a normalized position of the first friendly factory
                 factory = factories[k]
+                factory_cargo = np.array([
+                    factory["cargo"]["water"] / 1000,
+                    factory["cargo"]["metal"] / 1000
+                ])
                 factory_vec = np.array(factory["pos"]) / env_cfg.map_size
                 break
             units = shared_obs["units"][agent]
@@ -85,18 +94,18 @@ class SimpleUnitObservationWrapper(gym.ObservationWrapper):
                     ice_tile_locations[np.argmin(ice_tile_distances)] / env_cfg.map_size
                 )
 
-                # # compute closest ore tile
-                # ore_tile_distances = np.mean(
-                #     (ore_tile_locations - np.array(unit["pos"])) ** 2, 1
-                # )
-                # # normalize the ore tile location
-                # closest_ore_tile = (
-                #         ore_tile_locations[np.argmin(ore_tile_distances)] / env_cfg.map_size
-                # )
+                # compute closest ore tile
+                ore_tile_distances = np.mean(
+                    (ore_tile_locations - np.array(unit["pos"])) ** 2, 1
+                )
+                # normalize the ore tile location
+                closest_ore_tile = (
+                        ore_tile_locations[np.argmin(ore_tile_distances)] / env_cfg.map_size
+                )
 
 
                 obs_vec = np.concatenate(
-                    [unit_vec, factory_vec - pos, closest_ice_tile - pos], axis=-1
+                    [unit_vec, factory_vec - pos, closest_ice_tile - pos, closest_ore_tile - pos, factory_cargo ], axis=-1
                 )
                 break
             observation[agent] = obs_vec

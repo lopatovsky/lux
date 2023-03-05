@@ -68,6 +68,11 @@ class CustomEnvWrapper(gym.Wrapper):
         )
         metrics["water_produced"] = stats["generation"]["water"]
 
+        metrics["ore_dug"] = (
+                stats["generation"]["ore"]["HEAVY"] + stats["generation"]["ore"]["LIGHT"]
+        )
+        metrics["metal_produced"] = stats["generation"]["metal"]
+
         # we save these two to see often the agent updates robot action queues and how often enough
         # power to do so and succeed (less frequent updates = more power is saved)
         metrics["action_queue_updates_success"] = stats["action_queue_updates_success"]
@@ -83,8 +88,13 @@ class CustomEnvWrapper(gym.Wrapper):
             water_produced_this_step = (
                 metrics["water_produced"] - self.prev_step_metrics["water_produced"]
             )
+            ore_dug_this_step = metrics["ore_dug"] - self.prev_step_metrics["ore_dug"]
+            metal_produced_this_step = (
+                    metrics["metal_produced"] - self.prev_step_metrics["metal_produced"]
+            )
             # we reward water production more as it is the most important resource for survival
-            reward = ice_dug_this_step / 100 + water_produced_this_step
+            reward = ice_dug_this_step / 100 + water_produced_this_step + \
+                     ore_dug_this_step / 200 + metal_produced_this_step / 2
 
         self.prev_step_metrics = copy.deepcopy(metrics)
         return obs, reward, done, info
