@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 import numpy as np
 import numpy.typing as npt
+import random
 from gym import spaces
 
 
@@ -69,6 +70,10 @@ class SimpleUnitDiscreteController(Controller):
         action_space = spaces.Discrete(self.total_act_dims)
         super().__init__(action_space)
 
+    def random_move(self):
+        move_direction = random.randint(0, 4)
+        return np.array([0, move_direction, 0, 0, 0, 1])
+
     def _is_move_action(self, id):
         return id < self.move_dim_high
 
@@ -104,36 +109,48 @@ class SimpleUnitDiscreteController(Controller):
         units = shared_obs["units"][agent]
         for unit_id in units.keys():
             unit = units[unit_id]
-            choice = action
-            action_queue = []
-            no_op = False
-            if self._is_move_action(choice):
-                action_queue = [self._get_move_action(choice)]
-            elif self._is_transfer_action(choice):
-                action_queue = [self._get_transfer_action(choice)]
-            elif self._is_pickup_action(choice):
-                action_queue = [self._get_pickup_action(choice)]
-            elif self._is_dig_action(choice):
-                action_queue = [self._get_dig_action(choice)]
-            else:
-                # action is a no_op, so we don't update the action queue
-                no_op = True
+            if unit["unit_type"] == "HEAVY":
 
-            # simple trick to help agents conserve power is to avoid updating the action queue
-            # if the agent was previously trying to do that particular action already
-            if len(unit["action_queue"]) > 0 and len(action_queue) > 0:
-                same_actions = (unit["action_queue"][0] == action_queue[0]).all()
-                if same_actions:
+                choice = action
+                action_queue = []
+                no_op = False
+                if self._is_move_action(choice):
+                    action_queue = [self._get_move_action(choice)]
+                elif self._is_transfer_action(choice):
+                    action_queue = [self._get_transfer_action(choice)]
+                elif self._is_pickup_action(choice):
+                    action_queue = [self._get_pickup_action(choice)]
+                elif self._is_dig_action(choice):
+                    action_queue = [self._get_dig_action(choice)]
+                else:
+                    # action is a no_op, so we don't update the action queue
                     no_op = True
-            if not no_op:
-                lux_action[unit_id] = action_queue
 
-            break
+                # simple trick to help agents conserve power is to avoid updating the action queue
+                # if the agent was previously trying to do that particular action already
+                if len(unit["action_queue"]) > 0 and len(action_queue) > 0:
+                    same_actions = (unit["action_queue"][0] == action_queue[0]).all()
+                    if same_actions:
+                        no_op = True
+                if not no_op:
+                    lux_action[unit_id] = action_queue
+
+            else:  # LIGHT unit
+                if unit["action_queue"] == []:
+                    lux_action[unit_id] = [
+                        self.random_move(), self.random_move(),
+                        self.random_move(), self.random_move(),
+                        self._get_dig_action(0)]
 
         factories = shared_obs["factories"][agent]
         if len(units) == 0:
             for unit_id in factories.keys():
                 lux_action[unit_id] = 1  # build a single heavy
+
+        else:
+            for unit_id in factories.keys():
+                if factories[unit_id]["cargo"]["metal"] >= 10:
+                    lux_action[unit_id] = 0
 
         return lux_action
 
