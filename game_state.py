@@ -72,26 +72,26 @@ def build_distance_map(map, object_marker):
 
 class GameState:
 
-    def __init__(self, obs):
+    def __init__(self, obs, cfg):
         # These variables are constant during the game or only appear in initial obs.
-        self.me = obs["player"]
+        self.me = obs.player
         self.him = "player_1"
         if self.me == self.him:
             self.him = "player_0"
 
-        self.cfg = EnvConfig.from_dict(obs['info']['env_cfg'])
+        self.cfg = cfg
 
-        self.ice = np.array(obs["obs"]["board"]["ice"])
-        self.ore = np.array(obs["obs"]["board"]["ore"])
+        self.ice = np.array(obs.obs["board"]["ice"])
+        self.ore = np.array(obs.obs["board"]["ore"])
 
         self.ice_distance = build_distance_map(self.ice, 1)
         self.ore_distance = build_distance_map(self.ore, 1)
         # TODO for rubble,oponent lichen.. but this changes~~
 
-        self.factories_per_team = obs["obs"]["board"]["factories_per_team"]
+        self.factories_per_team = obs.obs["board"]["factories_per_team"]
 
         # Initial set of variables. Later they come as a diff
-        self.board = obs["obs"]["board"]
+        self.board = obs.obs["board"]
         self.rubble = np.array( self.board["rubble"])
         self.lichen = np.array( self.board["lichen"])
         self.lichen_strains = np.array( self.board["lichen_strains"])
@@ -124,14 +124,14 @@ class GameState:
     def set_variable_obs(self, obs):
 
         # TODO remove this once converted in controller.
-        self.obs = obs["obs"]
+        self.obs = obs.obs
 
         # from 0
-        self.real_step = obs["step"]
+        self.real_step = obs.step
         # from -7 to 1000
-        self.step = obs["obs"]["real_env_steps"]
+        self.step = obs.obs["real_env_steps"]
 
-        units_data = obs["obs"]["units"][self.me]
+        units_data = obs.obs["units"][self.me]
         for unit_id in units_data.keys():
             if unit_id in self.units:
                 self.units[unit_id].update(units_data[unit_id], self.real_step)
@@ -148,7 +148,7 @@ class GameState:
         for key in delete_keys:
             del self.units[key]
 
-        # his_units_data = obs["obs"]["units"][self.him]
+        # his_units_data = obs.obs["units"][self.him]
         # for unit_id in his_units_data.keys():
         #     if unit_id in self.his_units:
         #         self.units[unit_id].update(units_data[unit_id])
@@ -157,7 +157,7 @@ class GameState:
         # for unit in self.units.values():
         #     self.units_locs[unit.pos] = unit
 
-        factories_data = obs["obs"]["factories"][self.me]
+        factories_data = obs.obs["factories"][self.me]
         for factory_id in factories_data.keys():
             if factory_id in self.factories:
                 self.factories[factory_id].update(factories_data[factory_id])
@@ -165,16 +165,16 @@ class GameState:
             else:
                 self.factories[factory_id] = Factory(factories_data[factory_id])
 
-        self.his_factories = obs["obs"]["factories"][self.him]
+        self.his_factories = obs.obs["factories"][self.him]
 
-        if  len(obs["obs"]["teams"]) > 0:
-            self.my_team = obs["obs"]["teams"][self.me]
-            self.his_team = obs["obs"]["teams"][self.him]
+        if  len(obs.obs["teams"]) > 0:
+            self.my_team = obs.obs["teams"][self.me]
+            self.his_team = obs.obs["teams"][self.him]
 
         # print("step:", self.real_step, self.board.keys(), file=sys.stderr)
 
         if self.real_step > 0:
-            self.board = obs["obs"]["board"]
+            self.board = obs.obs["board"]
 
             #print("rubble: ", self.board["rubble"], file=sys.stderr)
 
@@ -190,6 +190,6 @@ class GameState:
 
         # obs global_id: 0 ?
 
-        self.bonus_time_left = obs["remainingOverageTime"]
-        self.reward = obs["reward"]  #?
+        self.bonus_time_left = obs.remainingOverageTime
+
 
