@@ -9,7 +9,22 @@ from wrappers import LuxObservationWrapper, LuxController
 
 from game_state import GameState
 
-def Valid(i, j):
+
+def code_to_direction(code):
+    if code == 0:
+        return (0, 0)
+    elif code == 1:
+        return (0, -1)
+    elif code == 2:
+        return (1, 0)
+    elif code == 3:
+        return (0, 1)
+    return (-1, 0)
+
+def distance(x,y):
+    return abs(x[0] - y[0]) + abs(x[1] - y[1])
+
+def valid(i, j):
     return i >= 0 and j >= 0 and i < 48 and j < 48
 
 
@@ -34,7 +49,7 @@ class Agent:
         self.factories = dict()
 
     def bid_policy(self):
-        return dict(faction="AlphaStrike", bid=1)
+        return dict(faction="AlphaStrike", bid=0)
 
     def factory_placement_policy(self):
         """
@@ -56,16 +71,12 @@ class Agent:
         # Find location that is adjacent to ice with minimal rubble available
         for spawn_loc in potential_spawns:
             x, y = spawn_loc
-
-            closest_ice = self.state.ice_distance[x,y]
-            ice_dist = abs(closest_ice[0]) + abs(closest_ice[1])
-
             min_rubble = 100
             count_zeros = 0
             has_ice = False
             for i in range(x - 2, x + 3):
                 for j in range(y - 2, y + 2):
-                    if not Valid(i, j):
+                    if not valid(i, j):
                         continue
                     if AdjToFactory(x, y, i, j):
                         if state.ice[i, j] == 1:
@@ -74,9 +85,6 @@ class Agent:
                         if state.rubble[i, j] == 0:
                             count_zeros += 1
             min_rubble -= count_zeros  # count_zeros is nonzero only if min_rubble is 0.
-
-            if ice_dist == 2 and min_rubble < 0:
-                min_rubble -= 5  # bonus for short path to ice TODO temporary need
 
             if has_ice and min_rubble < lowest_rubble:
                 lowest_rubble = min_rubble
@@ -124,6 +132,7 @@ class Agent:
 
         return self.rule_based_actions()
 
+
     def move_dist(self, x, y):
         """Move directions: [0, 0], [0, -1], [1, 0], [0, 1], [-1, 0]"""
         actions = []
@@ -151,21 +160,51 @@ class Agent:
         transfer_dir = 0
         return [np.array([1, transfer_dir, resource_code, self.state.cfg.max_transfer_amount, 0, 1])]
 
+    def ad_hoc_dist(self):
+        rand_num = np.random.randint(low=1, high=5)
+        x,y = code_to_direction(rand_num)
+        return (x*2, y*2)
+
+    def closest_home(self, home, pos):
+        new_home = home
+        dist = 100
+
+        for x in [-1,0,1]:
+            for y in [-1,0,1]:
+                d = distance(pos, (home[0]+x,home[1]+y))
+                if d < dist:
+                    dist = d
+                    new_home = (home[0]+x,home[1]+y)
+
+        return new_home
+
     def mine_resource_action(self, unit, resource_dist_map, resource_code):
         actions = []
 
-        dist = resource_dist_map[unit.pos[0],unit.pos[1]]
-        home_pos = unit.init_pos
+        if resource_dist_map is None:
+            dist = self.ad_hoc_dist()
+        else:
+            dist = resource_dist_map[unit.pos[0],unit.pos[1]]
+
+        target_pos = ((unit.pos[0] - dist[0]), (unit.pos[1] - dist[1]))
+
+        home_pos = self.closest_home(unit.init_pos, target_pos)
+        # home_pos = unit.init_pos
+
+
+        #print(unit.unit_id, "home-center: ", unit.init_pos, "home new:", home_pos, "pos", unit.pos, "target-pos:", target_pos, file=sys.stderr )
 
         actions.extend(self.move_dist(dist[0], dist[1]))
-        actions.extend(self.dig_action(5))
-        actions.extend(self.move_dist(home_pos[0] - (unit.pos[0] + dist[0]), home_pos[1] - (unit.pos[1] + dist[1])))
+        actions.extend(self.dig_action(10))
+        actions.extend(self.move_dist(target_pos[0] - home_pos[0], target_pos[1] - home_pos[1]))
         actions.extend(self.transfer_action(resource_code))
 
+        #print(unit.pos, actions)
+
         # TODO check current power
-        power = 50
+        power = 70
         if unit.unit_type == "HEAVY":
-            power = 400
+            power = 800
 
         actions.extend(self.pick_up_action(4, power)) # 4: power
 
@@ -186,7 +225,7 @@ class Agent:
         #rand_num = np.random.randint(low=1, high=5)
 
     def remove_rubble_action(self, unit):
-        return self.mine_resource_action(unit, self.state.rubble_distance, 1)
+        return self.mine_resource_action(unit, None, 0)
     # actions for robots:
     # - dig ice
     # - dig metal
@@ -199,9 +238,46 @@ class Agent:
     # - create heavy robot
     # - water lichen
 
-    def remove_rubble(self, unit):
-        pass
-        # basically almost mining
+    def stupid_action(self, unit):
+        if len(unit.action_queue) == 0:
+            return False
+
+        next_action = unit.action_queue[0]
+        px = unit.pos[0]
+        py = unit.pos[1]
+        state = self.state
+
+        if next_action[0] == 0:  # move
+            move_dir = code_to_direction(next_action[1])
+            move_loc = (px + move_dir[0], py + move_dir[1])
+            if not valid(*move_loc):
+                return True
+
+            # if unit.unit_id == "unit_39":
+            #     print(state.step, ":", px,py, move_dir, move_loc, file=sys.stderr )
+
+        elif next_action[0] == 3:
+            # TODO don't dig own lichen
+            if state.ice[px,py] + state.ore[px,py] + state.rubble[px,py] + state.lichen[px,py] == 0:
+                return True
+
+        return False
+
+    def collision(self, unit):
+        if len(unit.action_queue) == 0:
+            return False
+
+        next_action = unit.action_queue[0]
+        if next_action[0] == 0:  # move
+            px = unit.pos[0]
+            py = unit.pos[1]
+            move_dir = code_to_direction(next_action[1])
+            move_loc = (px + move_dir[0], py + move_dir[1])
+            # Collisions
+            if move_loc in self.state.unit_locs:
+                return True
+
+        return False
 
     # TODO move this to controller?
     def rule_based_actions(self):
@@ -211,16 +287,26 @@ class Agent:
         factories = self.state.factories
 
         for unit_id in units.keys():
+            if self.stupid_action(units[unit_id]):
+                units[unit_id].action_queue = []
+
+
+        for unit_id in units.keys():
             unit = units[unit_id]
-
-            # if collision_risk(unit):
-
 
             if len(unit.action_queue) == 0:
                 if unit.unit_type == 'HEAVY':
                     lux_action[unit_id] = self.mine_ice_action(unit)
                 else:
+                    # TODO query home factory
+                    #if np.random.rand() < 1.2:
                     lux_action[unit_id] = self.remove_rubble_action(unit)
+                    #else: lux_action[unit_id] = self.mine_ore_action(unit)
+
+        # TODO collisions
+        # for unit_id in units.keys():
+        #     if self.collision(units[unit_id]):
+        #         units[unit_id].action_queue = []
 
         # FACTORIES ACTION
 
@@ -233,7 +319,7 @@ class Agent:
         else:
             for factory_id in factories.keys():
                 factory = factories[factory_id]
-                if factory.cargo["metal"] < 45:
+                if factory.cargo["metal"] < 10:
                     continue
                 # todo don't create if there is something standing
                 lux_action[factory_id] = 0
@@ -241,7 +327,7 @@ class Agent:
         for factory_id in self.state.factories.keys():
             factory = self.state.factories[factory_id]
             if factory.cargo["water"] > 6*(1000 - self.state.step):
-                lux_action[factory_id] = 2  # water and grow lichen at the very end of the game
+                lux_action[factory_id] = 2  # water and grow lichen at the end of the game
 
         return lux_action
 

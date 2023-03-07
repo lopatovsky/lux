@@ -6,13 +6,14 @@ import numpy as np
 from lux.config import EnvConfig
 
 class Unit:
-    def __init__(self, obs):
-        self.update(obs)
+    def __init__(self, obs, time):
+        self.update(obs, time)
 
         # mother factory location
         self.init_pos = self.pos
 
-    def update(self, obs):
+    def update(self, obs, time):
+        self.time = time
         self.unit_id = obs["unit_id"]
         self.power = obs["power"]
         self.unit_type = obs["unit_type"]
@@ -95,15 +96,18 @@ class GameState:
         self.lichen = np.array( self.board["lichen"])
         self.lichen_strains = np.array( self.board["lichen_strains"])
 
-        self.rubble_distance = build_distance_map(self.rubble, 1)
+        #self.rubble_distance = build_distance_map(self.rubble, 1)
 
         self.valid_spawns_mask = np.array(self.board["valid_spawns_mask"])
 
-        self.previous_state = None
-        self.set_variable_obs(obs)
-
         self.units = dict()
         self.factories = dict()
+
+        self.unit_locs = dict()
+        self.his_unit_locs = dict()
+
+        self.previous_state = None
+        self.set_variable_obs(obs)
 
     def update(self, obs):
         self.previous_state = copy.copy(self)
@@ -128,12 +132,30 @@ class GameState:
         self.step = obs["obs"]["real_env_steps"]
 
         units_data = obs["obs"]["units"][self.me]
-
         for unit_id in units_data.keys():
             if unit_id in self.units:
-                self.units[unit_id].update(units_data[unit_id])
+                self.units[unit_id].update(units_data[unit_id], self.real_step)
             else:
-                self.units[unit_id] = Unit(units_data[unit_id])
+                self.units[unit_id] = Unit(units_data[unit_id], self.real_step)
+        delete_keys = []
+        self.unit_locs = dict()
+        for unit_id in self.units.keys():
+            unit = self.units[unit_id]
+            if unit.time != self.real_step:
+                delete_keys.append(unit_id)
+            else:
+                self.unit_locs[(unit.pos[0],unit.pos[1])] = unit
+        for key in delete_keys:
+            del self.units[key]
+
+        # his_units_data = obs["obs"]["units"][self.him]
+        # for unit_id in his_units_data.keys():
+        #     if unit_id in self.his_units:
+        #         self.units[unit_id].update(units_data[unit_id])
+        #     else:
+        #         self.units[unit_id] = Unit(units_data[unit_id])
+        # for unit in self.units.values():
+        #     self.units_locs[unit.pos] = unit
 
         factories_data = obs["obs"]["factories"][self.me]
         for factory_id in factories_data.keys():
@@ -143,7 +165,6 @@ class GameState:
             else:
                 self.factories[factory_id] = Factory(factories_data[factory_id])
 
-        self.his_units = obs["obs"]["units"][self.him]
         self.his_factories = obs["obs"]["factories"][self.him]
 
         if  len(obs["obs"]["teams"]) > 0:
@@ -152,7 +173,6 @@ class GameState:
 
         # print("step:", self.real_step, self.board.keys(), file=sys.stderr)
 
-        # todo later come updates not whole field
         if self.real_step > 0:
             self.board = obs["obs"]["board"]
 

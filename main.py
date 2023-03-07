@@ -15,9 +15,9 @@ def read_input():
         raise SystemExit(eof)
 
 def load_model(path: str):
-    directory = osp.dirname(__file__)
-    return PPO.load(osp.join(directory, MODEL_WEIGHTS_RELATIVE_PATH))
-
+    #directory = osp.dirname(__file__)
+    #return PPO.load(osp.join(directory, MODEL_WEIGHTS_RELATIVE_PATH))
+    return None # TODO __file__ is failing
 
 MODEL_WEIGHTS_RELATIVE_PATH = "./best_model"
 
