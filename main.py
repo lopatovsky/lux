@@ -1,86 +1,44 @@
 import json
-import sys
-from argparse import Namespace
-from typing import Dict
+import os.path as osp
+from stable_baselines3.ppo import PPO
 
 from agent import Agent
-from lux.config import EnvConfig
-from lux.kit import (
-    GameState,
-    from_json,
-    obs_to_game_state,
-    process_action,
-    process_obs,
-    to_json,
-)
+from game_state import GameState
 
-### DO NOT REMOVE THE FOLLOWING CODE ###
-agent_dict = (
-    dict()
-)  # store potentially multiple dictionaries as kaggle imports code directly
-agent_prev_obs = dict()
-
-
-def agent_fn(observation, configurations):
+def read_input():
     """
-    agent definition for kaggle submission.
+    Reads input from stdin
     """
-    global agent_dict
-    step = observation.step
+    try:
+        return input()
+    except EOFError as eof:
+        raise SystemExit(eof)
 
-    player = observation.player
-    remainingOverageTime = observation.remainingOverageTime
-    if step == 0:
-        env_cfg = EnvConfig.from_dict(configurations["env_cfg"])
-        agent_dict[player] = Agent(player, env_cfg)
-        agent_prev_obs[player] = dict()
-        agent = agent_dict[player]
-    
-    agent = agent_dict[player]
-    obs = process_obs(player, agent_prev_obs[player], step, json.loads(observation.obs))
-    agent_prev_obs[player] = obs
-    agent.step = step
-    if step == 0:
-        actions = agent.bid_policy(step, obs, remainingOverageTime)
-    elif obs["real_env_steps"] < 0:
-        actions = agent.factory_placement_policy(step, obs, remainingOverageTime)
-    else:
-        actions = agent.act(step, obs, remainingOverageTime)
+def load_model(path: str):
+    directory = osp.dirname(__file__)
+    return PPO.load(osp.join(directory, MODEL_WEIGHTS_RELATIVE_PATH))
 
-    return process_action(actions)
+
+MODEL_WEIGHTS_RELATIVE_PATH = "./best_model"
 
 
 if __name__ == "__main__":
 
-    def read_input():
-        """
-        Reads input from stdin
-        """
-        try:
-            return input()
-        except EOFError as eof:
-            raise SystemExit(eof)
 
-    step = 0
-    player_id = 0
-    configurations = None
-    i = 0
+    ppo_model = load_model(MODEL_WEIGHTS_RELATIVE_PATH)
+    state = None
+    agent = None
+
     while True:
-        inputs = read_input()
-        obs = json.loads(inputs)
+        inputs = json.loads(read_input())
 
-        observation = Namespace(
-            **dict(
-                step=obs["step"],
-                obs=json.dumps(obs["obs"]),
-                remainingOverageTime=obs["remainingOverageTime"],
-                player=obs["player"],
-                info=obs["info"],
-            )
-        )
-        if i == 0:
-            configurations = obs["info"]["env_cfg"]
-        i += 1
-        actions = agent_fn(observation, dict(env_cfg=configurations))
+        if agent == None:
+            state = GameState(inputs)
+            agent = Agent(ppo_model, state)
+        else:
+            state.update(inputs)
+
+        actions = agent.step()
+
         # send actions to engine
         print(json.dumps(actions))
