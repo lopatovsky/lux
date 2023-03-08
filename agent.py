@@ -4,28 +4,14 @@ import numpy as np
 import torch as th
 
 from lux.kit import process_action
+from lux.utils import code_to_direction, next_move, valid
 
 from wrappers import LuxObservationWrapper, LuxController
 
 from game_state import GameState
 
-
-def code_to_direction(code):
-    if code == 0:
-        return (0, 0)
-    elif code == 1:
-        return (0, -1)
-    elif code == 2:
-        return (1, 0)
-    elif code == 3:
-        return (0, 1)
-    return (-1, 0)
-
 def distance(x,y):
     return abs(x[0] - y[0]) + abs(x[1] - y[1])
-
-def valid(i, j):
-    return i >= 0 and j >= 0 and i < 48 and j < 48
 
 
 def AdjToFactory(x, y, i, j):
@@ -263,21 +249,52 @@ class Agent:
 
         return False
 
-    def collision(self, unit):
-        if len(unit.action_queue) == 0:
-            return False
+    def win_collision(self, unit, c_unit):
+        # TODO check for energy consumption of the current move & if power are the same
+        if unit.unit_type == c_unit.unit_type:
+            return unit.power > c_unit.power
+        return unit.unit_type < c_unit.unit_type  # "H" < "L"
 
-        next_action = unit.action_queue[0]
-        if next_action[0] == 0:  # move
-            px = unit.pos[0]
-            py = unit.pos[1]
-            move_dir = code_to_direction(next_action[1])
-            move_loc = (px + move_dir[0], py + move_dir[1])
-            # Collisions
-            if move_loc in self.state.unit_locs:
-                return True
+    def is_safe(self, unit, colliding_units):
+        for code, c_unit in colliding_units:
+            if unit == c_unit:
+                continue
+            if not self.win_collision(unit, c_unit):
+                return False
+        return True
 
-        return False
+    def resolve_collisions(self, unit):
+        move_code = next_move(unit)
+        move_dir = code_to_direction(move_code)
+        move_pos = ( unit.pos[0] + move_dir[0], unit.pos[1] + move_dir[1])
+
+        potential_collisions = self.state.units_map[move_pos[0]][move_pos[1]]
+        safe = True
+        for code, c_unit in potential_collisions:
+           if unit == c_unit:
+               continue
+           if not self.win_collision(unit,c_unit):
+               # Weaker must run away.
+               safe = False
+
+        # if unit.unit_type == "HEAVY":
+        #    print( unit.unit_id, safe, file=sys.stderr )
+
+        if not safe:
+            safe_dir_codes = []
+            for code, dir in [(1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
+                loc = unit.pos[0] + dir[0], unit.pos[1] + dir[1]
+                if valid(*loc) and self.is_safe(unit, self.state.units_map[loc[0]][loc[1]]):
+                    safe_dir_codes.append(code)
+            length = len(safe_dir_codes)
+            if length == 0:
+                print("trapped", file=sys.stderr)
+                # TODO still possible to optimize to go places with higher collision code.
+                return [np.array([0, np.random.randint(low=0, high=5), 0, 0, 0, 1])]
+            else:
+                # TODO movement is valid?
+                return [np.array([0, safe_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
+        return []
 
     # TODO move this to controller?
     def rule_based_actions(self):
@@ -303,10 +320,11 @@ class Agent:
                     lux_action[unit_id] = self.remove_rubble_action(unit)
                     #else: lux_action[unit_id] = self.mine_ore_action(unit)
 
-        # TODO collisions
-        # for unit_id in units.keys():
-        #     if self.collision(units[unit_id]):
-        #         units[unit_id].action_queue = []
+        # Collisions
+        for unit_id in units.keys():
+            action = self.resolve_collisions(units[unit_id])
+            if len(action) != 0:
+                lux_action[unit_id] = action
 
         # FACTORIES ACTION
 

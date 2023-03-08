@@ -3,7 +3,7 @@ import copy
 import queue
 import numpy as np
 
-from lux.config import EnvConfig
+from lux.utils import code_to_direction, next_move, valid
 
 class Unit:
     def __init__(self, obs, time):
@@ -103,8 +103,7 @@ class GameState:
         self.units = dict()
         self.factories = dict()
 
-        self.unit_locs = dict()
-        self.his_unit_locs = dict()
+        self.his_units = dict()
 
         self.previous_state = None
         self.set_variable_obs(obs)
@@ -120,6 +119,47 @@ class GameState:
             y = int(y_str)
             board[x,y] = value
 
+    def process_units(self, units_data, units):
+        for unit_id in units_data.keys():
+            if unit_id in units:
+                units[unit_id].update(units_data[unit_id], self.real_step)
+            else:
+                units[unit_id] = Unit(units_data[unit_id], self.real_step)
+        delete_keys = []
+        #self.unit_locs = dict()
+        for unit_id in units.keys():
+            unit = units[unit_id]
+            if unit.time != self.real_step:
+                delete_keys.append(unit_id)
+            # else:
+            #     self.unit_locs[(unit.pos[0],unit.pos[1])] = unit
+        for key in delete_keys:
+            del units[key]
+            print("del:", key, file=sys.stderr)
+
+    #TODO slow
+    def create_units_map(self, units, his_units):
+        """
+        0 - unit is there right now
+        1 - most likely next move location based on action queue (only if moves)
+        2 - potential next move location if queue changes (only if changes)
+        """
+        map = [[[] for i in range(48)] for j in range(48)]
+        for unit in units.values():
+            map[unit.pos[0]][unit.pos[1]].append((0, unit))
+
+            move_code = next_move(unit)
+
+            for dir_code, dir in [(1,(0,-1)), (2,(1,0)), (3,(0,1)), (4,(-1,0))]:
+                collision_code = 2
+                if dir_code == move_code:
+                    collision_code = 1
+                loc = (unit.pos[0]+dir[0],unit.pos[1]+dir[1])
+                if valid(*loc):
+                    map[loc[0]][loc[1]].append((collision_code, unit))
+
+        #TODO his_units
+        return map
 
     def set_variable_obs(self, obs):
 
@@ -132,30 +172,12 @@ class GameState:
         self.step = obs.obs["real_env_steps"]
 
         units_data = obs.obs["units"][self.me]
-        for unit_id in units_data.keys():
-            if unit_id in self.units:
-                self.units[unit_id].update(units_data[unit_id], self.real_step)
-            else:
-                self.units[unit_id] = Unit(units_data[unit_id], self.real_step)
-        delete_keys = []
-        self.unit_locs = dict()
-        for unit_id in self.units.keys():
-            unit = self.units[unit_id]
-            if unit.time != self.real_step:
-                delete_keys.append(unit_id)
-            else:
-                self.unit_locs[(unit.pos[0],unit.pos[1])] = unit
-        for key in delete_keys:
-            del self.units[key]
+        self.process_units( units_data, self.units )
 
-        # his_units_data = obs.obs["units"][self.him]
-        # for unit_id in his_units_data.keys():
-        #     if unit_id in self.his_units:
-        #         self.units[unit_id].update(units_data[unit_id])
-        #     else:
-        #         self.units[unit_id] = Unit(units_data[unit_id])
-        # for unit in self.units.values():
-        #     self.units_locs[unit.pos] = unit
+        his_units_data = obs.obs["units"][self.him]
+        self.process_units( his_units_data, self.his_units)
+
+        self.units_map = self.create_units_map(self.units, self.his_units)
 
         factories_data = obs.obs["factories"][self.me]
         for factory_id in factories_data.keys():
