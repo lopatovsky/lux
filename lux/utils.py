@@ -16,6 +16,9 @@ def code_to_direction(code):
 def valid(i, j):
     return i >= 0 and j >= 0 and i < 48 and j < 48
 
+def distance(x,y):
+    return abs(x[0] - y[0]) + abs(x[1] - y[1])
+
 def next_move(unit):
     if len(unit.action_queue) == 0:
         return 0  # Don't move or unknown

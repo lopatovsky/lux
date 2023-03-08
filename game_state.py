@@ -4,14 +4,18 @@ import queue
 import numpy as np
 from itertools import chain
 
-from lux.utils import code_to_direction, next_move, valid
+from lux.utils import code_to_direction, next_move, valid, distance
 
 class Unit:
-    def __init__(self, obs, time):
+    def __init__(self, obs, time, factory_loc_dict, is_my):
         self.update(obs, time)
-
         # mother factory location
-        self.init_pos = self.pos
+        if is_my:
+            self.is_baby = True
+            self.init_pos = self.pos
+            self.mother_ship = factory_loc_dict[self.init_pos[0], self.init_pos[1]]
+            self.mother_ship.child_units += 1
+            # TODO what if factory is dead
 
     def update(self, obs, time):
         self.time = time
@@ -23,15 +27,44 @@ class Unit:
         self.action_queue = obs["action_queue"]
 
 class Factory:
-    def __init__(self, obs):
-        self.update(obs)
+    def __init__(self, obs, state, time):
+        self.update(obs, time)
+        self.rubble_queue = []
+        self.rubble_queue_head = 0
+        self.child_units = 0
+        self.last_queue_shuffle = 0
+        self.state = state
 
-    def update(self, obs):
+    def update(self, obs, time):
+        self.time = time
         self.unit_id = obs["unit_id"]
         self.strain_id = obs["strain_id"]
         self.power = obs["power"]
         self.pos = obs["pos"]
         self.cargo = obs["cargo"]
+
+    def sort_rubble_queue(self):
+        """sort function: dist * K + rubble_value"""
+        K = 3.5
+        self.rubble_queue.sort(key=lambda triple: triple[1] * K + triple[2])
+
+    def next_rubble(self):
+        # move head to the start of the queue so some unconsumed rubble can be consumed.
+        if self.time - self.last_queue_shuffle > 150:
+            self.last_queue_shuffle = self.time
+            self.rubble_queue_head = 0
+
+        while(True):
+            if self.rubble_queue_head >= len(self.rubble_queue):
+                return ((0,0),0,1)
+            rubble = self.rubble_queue[self.rubble_queue_head]
+            if self.state.rubble[rubble[0]] > 0:
+                return rubble[0], rubble[1], self.state.rubble[rubble[0]]  # always returns current rubble state
+            # skip rubble-less tile
+            self.rubble_queue_head+=1
+
+    def consume_rubble(self):
+        self.rubble_queue_head += 1
 
 def valid_loc(loc,x,y):
     return ( loc[0]+x >= 0 and loc[0]+x < 48 and loc[1]+y >= 0 and loc[1]+y < 48 )
@@ -120,12 +153,12 @@ class GameState:
             y = int(y_str)
             board[x,y] = value
 
-    def process_units(self, units_data, units):
+    def process_units(self, units_data, units, is_my = True):
         for unit_id in units_data.keys():
             if unit_id in units:
                 units[unit_id].update(units_data[unit_id], self.real_step)
             else:
-                units[unit_id] = Unit(units_data[unit_id], self.real_step)
+                units[unit_id] = Unit(units_data[unit_id], self.real_step, self.factory_loc_dict, is_my)
         delete_keys = []
         #self.unit_locs = dict()
         for unit_id in units.keys():
@@ -136,7 +169,7 @@ class GameState:
             #     self.unit_locs[(unit.pos[0],unit.pos[1])] = unit
         for key in delete_keys:
             del units[key]
-            print("del:", key, file=sys.stderr)
+            #print("del:", key, file=sys.stderr)
 
     #TODO slow
     def create_units_map(self, units, his_units):
@@ -162,6 +195,26 @@ class GameState:
         #TODO his_units
         return map
 
+    def divide_and_conquer_rubble(self):
+        # TODO use distance to his factories
+        for i in range(self.rubble.shape[0]):
+            for j in range(self.rubble.shape[1]):
+                #if self.rubble[i,j] <= 0:  # Even if no rubble add close empty tiles. As someone could add dirt.
+                #    continue
+                min_dist = 100
+                closest_factory = None
+                for factory in self.factories.values():
+                    dist = distance( factory.pos, (i,j))
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_factory = factory
+                if self.rubble[i,j] <= 0 and min_dist > 3:  # Even if no rubble add close empty tiles. As someone could add dirt.
+                    continue
+                closest_factory.rubble_queue.append(((i,j), min_dist, self.rubble[i,j] ))
+
+        for factory_id, factory in self.factories.items():
+            factory.sort_rubble_queue()
+
     def set_variable_obs(self, obs):
 
         # TODO remove this once converted in controller.
@@ -176,17 +229,25 @@ class GameState:
         self.process_units( units_data, self.units )
 
         his_units_data = obs.obs["units"][self.him]
-        self.process_units( his_units_data, self.his_units)
+        self.process_units( his_units_data, self.his_units, is_my = False)
 
         self.units_map = self.create_units_map(self.units, self.his_units)
 
         factories_data = obs.obs["factories"][self.me]
         for factory_id in factories_data.keys():
             if factory_id in self.factories:
-                self.factories[factory_id].update(factories_data[factory_id])
+                self.factories[factory_id].update(factories_data[factory_id], self.real_step)
                 #print("new_unit", factories_data[factory_id], file=sys.stderr)
             else:
-                self.factories[factory_id] = Factory(factories_data[factory_id])
+                self.factories[factory_id] = Factory(factories_data[factory_id], self, self.real_step)
+
+        delete_keys = []
+        for fac_id in self.factories.keys():
+            fac = self.factories[fac_id]
+            if fac.time != self.real_step:
+                delete_keys.append(fac_id)
+        for key in delete_keys:
+            del self.factories[key]
 
         self.his_factories = obs.obs["factories"][self.him]
 
@@ -211,7 +272,11 @@ class GameState:
                 #print(self.board["valid_spawns_mask"], file=sys.stderr)
                 self.valid_spawns_mask = np.array(self.board["valid_spawns_mask"])
 
-        # obs global_id: 0 ?
+        if self.step == 0:
+            self.divide_and_conquer_rubble()
+            self.factory_loc_dict = dict()
+            for factory in self.factories.values():
+                self.factory_loc_dict[(factory.pos[0], factory.pos[1])] = factory
 
         self.bonus_time_left = obs.remainingOverageTime
 

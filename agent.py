@@ -1,17 +1,17 @@
 import sys
+import math
 
 import numpy as np
 import torch as th
 
 from lux.kit import process_action
-from lux.utils import code_to_direction, next_move, valid
+from lux.utils import code_to_direction, next_move, valid, distance
 
 from wrappers import LuxObservationWrapper, LuxController
 
 from game_state import GameState
 
-def distance(x,y):
-    return abs(x[0] - y[0]) + abs(x[1] - y[1])
+
 
 
 def AdjToFactory(x, y, i, j):
@@ -132,6 +132,9 @@ class Agent:
             actions.append(np.array([0, 3, 0, 0, 0, -y]))
         return actions
 
+    def move_from_to(self, x, y):
+        return self.move_dist(x[0] - y[0], x[1] - y[1])
+
     def dig_action(self, n):
         return [np.array([3, 0, 0, 0, 0, n])]
 
@@ -151,6 +154,9 @@ class Agent:
         x,y = code_to_direction(rand_num)
         return (x*2, y*2)
 
+    def is_home(self, home, pos):
+        return max(abs(home[0] - pos[0]) , abs(home[1] - pos[1])) <= 1
+
     def closest_home(self, home, pos):
         new_home = home
         dist = 100
@@ -167,10 +173,7 @@ class Agent:
     def mine_resource_action(self, unit, resource_dist_map, resource_code):
         actions = []
 
-        if resource_dist_map is None:
-            dist = self.ad_hoc_dist()
-        else:
-            dist = resource_dist_map[unit.pos[0],unit.pos[1]]
+        dist = resource_dist_map[unit.pos[0],unit.pos[1]]
 
         target_pos = ((unit.pos[0] - dist[0]), (unit.pos[1] - dist[1]))
 
@@ -182,7 +185,7 @@ class Agent:
 
         actions.extend(self.move_dist(dist[0], dist[1]))
         actions.extend(self.dig_action(10))
-        actions.extend(self.move_dist(target_pos[0] - home_pos[0], target_pos[1] - home_pos[1]))
+        actions.extend(self.move_from_to(target_pos, home_pos))
         actions.extend(self.transfer_action(resource_code))
 
         #print(unit.pos, actions)
@@ -211,7 +214,39 @@ class Agent:
         #rand_num = np.random.randint(low=1, high=5)
 
     def remove_rubble_action(self, unit):
-        return self.mine_resource_action(unit, None, 0)
+        actions = []
+        # TODO newly created rubble that is close? - maybe factory could check here and there.
+        target_pos, total_dist , rubble_value = unit.mother_ship.next_rubble()
+
+        was_baby = False
+        if unit.is_baby:
+            unit.is_baby = False
+            was_baby = True
+            actions.extend(self.pick_up_action(4, 99))  # New unit gets a lot of power because it's needed in beginning the most.
+
+        dig_times = math.ceil(rubble_value / 2)  # LIGHT dig by 2
+        energy_need = 5*dig_times + 2*total_dist
+
+        if energy_need > unit.power and unit.power != 150 and not was_baby: # LIGHT unit battery capacity is 150
+            home_pos = self.closest_home(unit.init_pos, unit.pos)
+            actions.extend(self.move_from_to(unit.pos, home_pos))
+            power_to_add = energy_need - unit.power + total_dist*2
+            actions.extend(self.pick_up_action(4, power_to_add))  # 4: power
+            return actions
+
+        # accepts work on rubble removing.
+        unit.mother_ship.consume_rubble()
+
+        home_pos = self.closest_home(unit.init_pos, target_pos)
+
+        if self.is_home(unit.init_pos, unit.pos) and not was_baby:
+            actions.extend(self.pick_up_action(4, total_dist*2))
+        actions.extend(self.move_from_to(unit.pos, target_pos))
+        actions.extend(self.dig_action(dig_times))
+        actions.extend(self.move_from_to(target_pos, home_pos))
+
+        return actions
+
     # actions for robots:
     # - dig ice
     # - dig metal
@@ -263,38 +298,52 @@ class Agent:
                 return False
         return True
 
-    def resolve_collisions(self, unit):
-        move_code = next_move(unit)
+    def is_small_risk(self, unit, colliding_units):
+        min_code = 2
+        for code, c_unit in colliding_units:
+            if unit == c_unit:
+                continue
+            if not self.win_collision(unit, c_unit):
+                min_code = min(min_code, code)
+        return min_code == 2
+
+    def resolve_collisions(self, unit, lux_actions):
+        # Either check unit's action queue, or the lux actions that are about to overwrite it.
+        if unit.unit_id in lux_actions:
+            u_actions = lux_actions[unit.unit_id]
+            move_code = 0
+            if len(u_actions) > 0 and u_actions[0][0] == 0:  # first action's first value is zero -> means moving action.
+                move_code = u_actions[0][1]  # move code of first action
+        else:
+            move_code = next_move(unit)
+
         move_dir = code_to_direction(move_code)
-        move_pos = ( unit.pos[0] + move_dir[0], unit.pos[1] + move_dir[1])
+        move_pos = (unit.pos[0] + move_dir[0], unit.pos[1] + move_dir[1])
 
-        potential_collisions = self.state.units_map[move_pos[0]][move_pos[1]]
-        safe = True
-        for code, c_unit in potential_collisions:
-           if unit == c_unit:
-               continue
-           if not self.win_collision(unit,c_unit):
-               # Weaker must run away.
-               safe = False
+        if self.is_safe(unit, self.state.units_map[move_pos[0]][move_pos[1]]):
+            return []
 
-        # if unit.unit_type == "HEAVY":
-        #    print( unit.unit_id, safe, file=sys.stderr )
-
-        if not safe:
-            safe_dir_codes = []
-            for code, dir in [(1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
-                loc = unit.pos[0] + dir[0], unit.pos[1] + dir[1]
-                if valid(*loc) and self.is_safe(unit, self.state.units_map[loc[0]][loc[1]]):
+        safe_dir_codes = []
+        small_risk_dir_codes = []
+        for code, dir in [(0, (0, 0)) ,(1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
+            loc = unit.pos[0] + dir[0], unit.pos[1] + dir[1]
+            if valid(*loc):
+                if self.is_safe(unit, self.state.units_map[loc[0]][loc[1]]):
                     safe_dir_codes.append(code)
-            length = len(safe_dir_codes)
+                elif self.is_small_risk(unit, self.state.units_map[loc[0]][loc[1]]):
+                    small_risk_dir_codes.append(code)
+        length = len(safe_dir_codes)
+        if length == 0:
+            print("potentially trapped", file=sys.stderr)
+            length = len(small_risk_dir_codes)
             if length == 0:
                 print("trapped", file=sys.stderr)
-                # TODO still possible to optimize to go places with higher collision code.
                 return [np.array([0, np.random.randint(low=0, high=5), 0, 0, 0, 1])]
             else:
-                # TODO movement is valid?
-                return [np.array([0, safe_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
-        return []
+                return [np.array([0, small_risk_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
+        else:
+            return [np.array([0, safe_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
+
 
     # TODO move this to controller?
     def rule_based_actions(self):
@@ -305,6 +354,7 @@ class Agent:
 
         for unit_id in units.keys():
             if self.stupid_action(units[unit_id]):
+                # sets action queue to empty so it is later pick-ed up as idle and get more meaningful activity.
                 units[unit_id].action_queue = []
 
 
@@ -322,29 +372,34 @@ class Agent:
 
         # Collisions
         for unit_id in units.keys():
-            action = self.resolve_collisions(units[unit_id])
+            action = self.resolve_collisions(units[unit_id], lux_action)
             if len(action) != 0:
                 lux_action[unit_id] = action
 
         # FACTORIES ACTION
 
-        # Create a heavy unit.
+        # creates a heavy unit.
         if len(units) == 0:
             for factory_id in factories.keys():
                 lux_action[factory_id] = 1
 
-        # Create a light unit
+        # creates a light unit
         else:
             for factory_id in factories.keys():
                 factory = factories[factory_id]
                 if factory.cargo["metal"] < 10:
                     continue
-                # todo don't create if there is something standing
                 lux_action[factory_id] = 0
+
+        # doesn't create unit if it is dangerous
+        for factory_id, factory in factories.items():
+            if factory_id in lux_action:
+                if len(self.state.units_map[factory.pos[0]][factory.pos[1]]) > 0:
+                    del lux_action[factory_id]
 
         for factory_id in self.state.factories.keys():
             factory = self.state.factories[factory_id]
-            if factory.cargo["water"] > 6*(1000 - self.state.step):
+            if factory.cargo["water"] > 6*(1000 - self.state.step) + 20:
                 lux_action[factory_id] = 2  # water and grow lichen at the end of the game
 
         return lux_action
