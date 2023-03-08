@@ -284,27 +284,34 @@ class Agent:
 
         return False
 
-    def win_collision(self, unit, c_unit):
+    def win_collision(self, unit, move_code, c_unit, collision_code):
         # TODO check for energy consumption of the current move & if power are the same
         if unit.unit_type == c_unit.unit_type:
-            return unit.power > c_unit.power
+            if move_code == 0 and collision_code > 0:
+                return False
+            elif collision_code == 0 and move_code > 0:
+                return True # TODO avoid killing if own unit has zero battery. Kill if it is opponent.
+            else:
+                return unit.power > c_unit.power
         return unit.unit_type < c_unit.unit_type  # "H" < "L"
 
-    def is_safe(self, unit, colliding_units):
-        for code, c_unit in colliding_units:
+    def is_safe(self, unit, move_code, colliding_units):
+
+        #  if move_code zero than win collision not on power
+        for collision_code, c_unit in colliding_units:
             if unit == c_unit:
                 continue
-            if not self.win_collision(unit, c_unit):
+            if not self.win_collision(unit, move_code, c_unit, collision_code):
                 return False
         return True
 
-    def is_small_risk(self, unit, colliding_units):
+    def is_small_risk(self, unit, move_code, colliding_units):
         min_code = 2
-        for code, c_unit in colliding_units:
+        for collision_code, c_unit in colliding_units:
             if unit == c_unit:
                 continue
-            if not self.win_collision(unit, c_unit):
-                min_code = min(min_code, code)
+            if not self.win_collision(unit, move_code, c_unit, collision_code):
+                min_code = min(min_code, collision_code)
         return min_code == 2
 
     def resolve_collisions(self, unit, lux_actions):
@@ -320,7 +327,7 @@ class Agent:
         move_dir = code_to_direction(move_code)
         move_pos = (unit.pos[0] + move_dir[0], unit.pos[1] + move_dir[1])
 
-        if self.is_safe(unit, self.state.units_map[move_pos[0]][move_pos[1]]):
+        if self.is_safe(unit, move_code, self.state.units_map[move_pos[0]][move_pos[1]]):
             return []
 
         safe_dir_codes = []
@@ -328,9 +335,9 @@ class Agent:
         for code, dir in [(0, (0, 0)) ,(1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
             loc = unit.pos[0] + dir[0], unit.pos[1] + dir[1]
             if valid(*loc):
-                if self.is_safe(unit, self.state.units_map[loc[0]][loc[1]]):
+                if self.is_safe(unit, code, self.state.units_map[loc[0]][loc[1]]):
                     safe_dir_codes.append(code)
-                elif self.is_small_risk(unit, self.state.units_map[loc[0]][loc[1]]):
+                elif self.is_small_risk(unit, code, self.state.units_map[loc[0]][loc[1]]):
                     small_risk_dir_codes.append(code)
         length = len(safe_dir_codes)
         if length == 0:
