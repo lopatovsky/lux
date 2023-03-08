@@ -2,6 +2,7 @@ import sys
 import copy
 import queue
 import numpy as np
+from itertools import chain
 
 from lux.utils import code_to_direction, next_move, valid
 
@@ -145,7 +146,7 @@ class GameState:
         2 - potential next move location if queue changes (only if changes)
         """
         map = [[[] for i in range(48)] for j in range(48)]
-        for unit in units.values():
+        for unit in chain(units.values(), his_units.values()):
             map[unit.pos[0]][unit.pos[1]].append((0, unit))
 
             move_code = next_move(unit)
