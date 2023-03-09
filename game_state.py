@@ -30,8 +30,9 @@ class Unit:
         self.action_queue = obs["action_queue"]
 
 class Factory:
-    def __init__(self, obs, state, time):
+    def __init__(self, obs, state, time, is_my = False):
         self.update(obs, time)
+        self.is_my = is_my
         self.rubble_queue = []
         self.rubble_queue_head = 0
         self.child_units = 0  # count
@@ -223,14 +224,15 @@ class GameState:
                 #    continue
                 min_dist = 100
                 closest_factory = None
-                for factory in self.factories.values():
+                for factory in chain(self.factories.values(), self.his_factories.values()):
                     dist = distance( factory.pos, (i,j))
                     if dist < min_dist:
                         min_dist = dist
                         closest_factory = factory
                 if self.rubble[i,j] <= 0 and min_dist > 3:  # Even if no rubble add close empty tiles. As someone could add dirt.
                     continue
-                closest_factory.rubble_queue.append(((i,j), min_dist, self.rubble[i,j] ))
+                if closest_factory.is_my:
+                    closest_factory.rubble_queue.append(((i,j), min_dist, self.rubble[i,j] ))
 
         for factory_id, factory in self.factories.items():
             factory.sort_rubble_queue()
@@ -259,7 +261,7 @@ class GameState:
                 self.factories[factory_id].update(factories_data[factory_id], self.real_step)
                 #print("new_unit", factories_data[factory_id], file=sys.stderr)
             else:
-                self.factories[factory_id] = Factory(factories_data[factory_id], self, self.real_step)
+                self.factories[factory_id] = Factory(factories_data[factory_id], self, self.real_step, is_my = True)
 
         delete_keys = []
         for fac_id in self.factories.keys():

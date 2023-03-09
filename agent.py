@@ -1,5 +1,6 @@
 import sys
 import math
+import random
 
 import numpy as np
 import torch as th
@@ -25,6 +26,7 @@ def AdjToFactory(x, y, i, j):
 class Agent:
     def __init__(self, ppo_model, state: GameState) -> None:
         np.random.seed(0)
+        random.seed(0)
         self.ppo_model = ppo_model
         self.state = state
 
@@ -35,7 +37,7 @@ class Agent:
         self.factories = dict()
 
     def bid_policy(self):
-        return dict(faction="AlphaStrike", bid=0)
+        return dict(faction="AlphaStrike", bid=2)
 
     def factory_placement_policy(self):
         """
@@ -122,14 +124,27 @@ class Agent:
     def move_dist(self, x, y):
         """Move directions: [0, 0], [0, -1], [1, 0], [0, 1], [-1, 0]"""
         actions = []
+        sub_moves = []
         if x > 0:
-            actions.append(np.array([0, 4, 0, 0, 0, x]))
+            sub_moves.append((4,x))
         elif x < 0:
-            actions.append(np.array([0, 2, 0, 0, 0, -x]))
+            sub_moves.append((2,-x))
         if y > 0:
-            actions.append(np.array([0, 1, 0, 0, 0, y]))
+            sub_moves.append((1,y))
         elif y < 0:
-            actions.append(np.array([0, 3, 0, 0, 0, -y]))
+            sub_moves.append((3,-y))
+
+        split = []
+        for code, x in sub_moves:
+            div = x//3
+            split.extend([[code, div], [code, div], [code, div + x%3]])
+
+        random.shuffle(split)
+
+        for code, x in split:
+            if x > 0:
+                actions.append(np.array([0, code, 0, 0, 0, x]))
+
         return actions
 
     def move_from_to(self, x, y):
