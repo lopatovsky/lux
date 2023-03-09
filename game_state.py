@@ -17,8 +17,6 @@ class Unit:
             self.init_pos = self.pos
             self.mother_ship = factory_loc_dict[self.init_pos[0], self.init_pos[1]]
             self.mother_ship.kids.append(self)
-            self.mother_ship.child_units += 1
-            # TODO what if factory is dead
 
     def update(self, obs, time):
         self.time = time
@@ -35,10 +33,8 @@ class Factory:
         self.is_my = is_my
         self.rubble_queue = []
         self.rubble_queue_head = 0
-        self.child_units = 0  # count
         self.last_queue_shuffle = 0
         self.state = state
-
         self.kids = []
 
     def update(self, obs, time):
@@ -51,7 +47,8 @@ class Factory:
 
     def move_kids_to(self, step_mother):
         for kid in self.kids:
-            kid.mother_factory = step_mother
+            kid.mother_ship = step_mother
+            step_mother.kids.append(kid)
             kid.init_pos = step_mother.pos  # Brainwashing :)
             kid.occupation = "NO"
 
@@ -220,8 +217,6 @@ class GameState:
         # TODO use distance to his factories
         for i in range(self.rubble.shape[0]):
             for j in range(self.rubble.shape[1]):
-                #if self.rubble[i,j] <= 0:  # Even if no rubble add close empty tiles. As someone could add dirt.
-                #    continue
                 min_dist = 100
                 closest_factory = None
                 for factory in chain(self.factories.values(), self.his_factories.values()):
@@ -289,8 +284,6 @@ class GameState:
 
         if self.real_step > 0:
             self.board = obs.obs["board"]
-
-            #print("rubble: ", self.board["rubble"], file=sys.stderr)
 
             self.update_board( self.rubble, self.board["rubble"])
             self.update_board( self.lichen, self.board["lichen"])

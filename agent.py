@@ -120,6 +120,25 @@ class Agent:
 
         return self.rule_based_actions()
 
+    def compute_move_price(self, pos, move_actions):
+        # TODO maybe the best possible path not some random.
+        rubble = self.state.rubble
+        no_go = self.state.no_go_map
+        px = pos[0]
+        py = pos[1]
+
+        price = 0
+        for action in move_actions:
+            dir = code_to_direction(action[1])
+            for i in range(action[5]):
+                px += dir[0]
+                py += dir[1]
+                if not valid(px,py) or no_go[px,py]:
+                    price += 1000
+                price += 1 + (rubble[px,py] // 20)  # for small robot
+
+        return price
+
 
     def move_dist(self, x, y):
         """Move directions: [0, 0], [0, -1], [1, 0], [0, 1], [-1, 0]"""
