@@ -139,9 +139,13 @@ class Agent:
 
         return price
 
+    def move_dist_2(self, x, y):
+        return self.state.clux.shortest_path(x,y,x,y,True)
 
     def move_dist(self, x, y):
         """Move directions: [0, 0], [0, -1], [1, 0], [0, 1], [-1, 0]"""
+        z = self.move_dist_2(x,y) # TODO fake method only to test performance
+
         actions = []
         sub_moves = []
         if x > 0:
@@ -333,6 +337,8 @@ class Agent:
         # TODO check for energy consumption of the current move & if power are the same
         if unit.unit_type == c_unit.unit_type:
             if move_code == 0 and collision_code > 0:
+                # if c_unit.is_my and collision_code == 2:
+                #     return True  # TODO dangerous move, but.
                 return False
             elif collision_code == 0 and move_code > 0:
                 if c_unit.is_my and self.insufficient_power( c_unit ):
@@ -453,7 +459,8 @@ class Agent:
 
         for factory_id in self.state.factories.keys():
             factory = self.state.factories[factory_id]
-            if factory.cargo["water"] > 6*(1000 - self.state.step) + 20:
+            K = (1100 - self.state.step) / 100
+            if factory.cargo["water"] > K *(1000 - self.state.step) + 20:
                 lux_action[factory_id] = 2  # water and grow lichen at the end of the game
 
         return lux_action

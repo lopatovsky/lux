@@ -4,6 +4,8 @@ import queue
 import numpy as np
 from itertools import chain
 
+import clux
+
 from lux.utils import code_to_direction, next_move, valid, distance
 
 class Unit:
@@ -152,6 +154,9 @@ class GameState:
         self.no_go_map = np.zeros((48, 48))
 
         self.previous_state = None
+
+        self.clux = clux.CLux(self.ice, self.ore)
+
         self.set_variable_obs(obs)
 
     def update(self, obs):
@@ -304,4 +309,5 @@ class GameState:
 
         self.bonus_time_left = obs.remainingOverageTime
 
+        self.clux.update_rubble(self.rubble)
 
