@@ -11,9 +11,11 @@ class Unit:
         self.update(obs, time)
         # mother factory location
         if is_my:
+            self.occupation = "NO"
             self.is_baby = True
             self.init_pos = self.pos
             self.mother_ship = factory_loc_dict[self.init_pos[0], self.init_pos[1]]
+            self.mother_ship.kids.append(self)
             self.mother_ship.child_units += 1
             # TODO what if factory is dead
 
@@ -31,9 +33,11 @@ class Factory:
         self.update(obs, time)
         self.rubble_queue = []
         self.rubble_queue_head = 0
-        self.child_units = 0
+        self.child_units = 0  # count
         self.last_queue_shuffle = 0
         self.state = state
+
+        self.kids = []
 
     def update(self, obs, time):
         self.time = time
@@ -42,6 +46,12 @@ class Factory:
         self.power = obs["power"]
         self.pos = obs["pos"]
         self.cargo = obs["cargo"]
+
+    def move_kids_to(self, step_mother):
+        for kid in self.kids:
+            kid.mother_factory = step_mother
+            kid.init_pos = step_mother.pos  # Brainwashing :)
+            kid.occupation = "NO"
 
     def sort_rubble_queue(self):
         """sort function: dist * K + rubble_value"""
@@ -247,7 +257,9 @@ class GameState:
             if fac.time != self.real_step:
                 delete_keys.append(fac_id)
         for key in delete_keys:
+            death_mother = self.factories[key]
             del self.factories[key]
+            death_mother.move_kids_to(next(iter(self.factories.values())))
 
         self.his_factories = obs.obs["factories"][self.him]
 

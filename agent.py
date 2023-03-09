@@ -199,6 +199,7 @@ class Agent:
 
         return actions
     def mine_ice_action(self, unit):
+        unit.occupation = "ICE"
         return self.mine_resource_action(unit, self.state.ice_distance, 0)  # 0: ice
 
         # find closest ice
@@ -210,12 +211,14 @@ class Agent:
         # go home to charge first. # need action or just stay
 
     def mine_ore_action(self, unit):
+        unit.occupation = "ORE"
         return self.mine_resource_action(unit, self.state.ore_distance, 1)
         #rand_num = np.random.randint(low=1, high=5)
 
     def remove_rubble_action(self, unit):
+        unit.occupation = "RUBBLE"
         actions = []
-        # TODO newly created rubble that is close? - maybe factory could check here and there.
+
         target_pos, total_dist , rubble_value = unit.mother_ship.next_rubble()
 
         was_baby = False
@@ -368,7 +371,7 @@ class Agent:
         for unit_id in units.keys():
             unit = units[unit_id]
 
-            if len(unit.action_queue) == 0:
+            if len(unit.action_queue) == 0 or unit.occupation == "NO":
                 if unit.unit_type == 'HEAVY':
                     lux_action[unit_id] = self.mine_ice_action(unit)
                 else:
