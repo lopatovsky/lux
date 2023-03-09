@@ -9,8 +9,9 @@ from lux.utils import code_to_direction, next_move, valid, distance
 class Unit:
     def __init__(self, obs, time, factory_loc_dict, is_my):
         self.update(obs, time)
+        self.is_my = is_my
         # mother factory location
-        if is_my:
+        if self.is_my:
             self.occupation = "NO"
             self.is_baby = True
             self.init_pos = self.pos
@@ -148,6 +149,9 @@ class GameState:
         self.factories = dict()
 
         self.his_units = dict()
+        self.his_factories = dict()
+
+        self.no_go_map = np.zeros((48, 48))
 
         self.previous_state = None
         self.set_variable_obs(obs)
@@ -202,8 +206,14 @@ class GameState:
                 if valid(*loc):
                     map[loc[0]][loc[1]].append((collision_code, unit))
 
-        #TODO his_units
         return map
+
+    def build_no_go_map(self):
+        """Opponent factories"""
+        for factory in self.his_factories.values():
+            for i in [-1,0,1]:
+                for j in [-1,0,1]:
+                    self.no_go_map[factory.pos[0] + i, factory.pos[1] + j] = 1
 
     def divide_and_conquer_rubble(self):
         # TODO use distance to his factories
@@ -261,7 +271,13 @@ class GameState:
             del self.factories[key]
             death_mother.move_kids_to(next(iter(self.factories.values())))
 
-        self.his_factories = obs.obs["factories"][self.him]
+        his_factories_data = obs.obs["factories"][self.him]
+        for factory_id in his_factories_data:
+            if factory_id in self.his_factories:
+                self.his_factories[factory_id].update(his_factories_data[factory_id], self.real_step)
+            else:
+                self.his_factories[factory_id] = Factory(his_factories_data[factory_id], self, self.real_step)
+        # Don't care about their death yet.
 
         if  len(obs.obs["teams"]) > 0:
             self.my_team = obs.obs["teams"][self.me]
@@ -287,6 +303,7 @@ class GameState:
         if self.step == 0:
             self.divide_and_conquer_rubble()
             self.factory_loc_dict = dict()
+            self.build_no_go_map()
             for factory in self.factories.values():
                 self.factory_loc_dict[(factory.pos[0], factory.pos[1])] = factory
 

@@ -274,7 +274,7 @@ class Agent:
         if next_action[0] == 0:  # move
             move_dir = code_to_direction(next_action[1])
             move_loc = (px + move_dir[0], py + move_dir[1])
-            if not valid(*move_loc):
+            if not valid(*move_loc) or state.no_go_map[move_loc]:
                 return True
 
             # if unit.unit_id == "unit_39":
@@ -287,13 +287,23 @@ class Agent:
 
         return False
 
+    def is_night(self):
+        mod_step = self.state.step % 50
+        return mod_step >= 30
+
+    def insufficient_power(self, unit):
+        # TODO this is only for light units. Sometimes may be unnecessery restrictive.
+        return unit.power < 6
+
     def win_collision(self, unit, move_code, c_unit, collision_code):
         # TODO check for energy consumption of the current move & if power are the same
         if unit.unit_type == c_unit.unit_type:
             if move_code == 0 and collision_code > 0:
                 return False
             elif collision_code == 0 and move_code > 0:
-                return True # TODO avoid killing if own unit has zero battery. Kill if it is opponent.
+                if c_unit.is_my and self.insufficient_power( c_unit ):
+                    return False
+                return True  # returning True means possible killing.
             else:
                 return unit.power > c_unit.power
         return unit.unit_type < c_unit.unit_type  # "H" < "L"
@@ -337,7 +347,7 @@ class Agent:
         small_risk_dir_codes = []
         for code, dir in [(0, (0, 0)) ,(1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
             loc = unit.pos[0] + dir[0], unit.pos[1] + dir[1]
-            if valid(*loc):
+            if valid(*loc) and not self.state.no_go_map[loc]:
                 if self.is_safe(unit, code, self.state.units_map[loc[0]][loc[1]]):
                     safe_dir_codes.append(code)
                 elif self.is_small_risk(unit, code, self.state.units_map[loc[0]][loc[1]]):
