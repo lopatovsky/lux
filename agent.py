@@ -45,38 +45,11 @@ class Agent:
         near a random ice tile and if possible close to an empty lot.
         """
         state = self.state
+        pos = state.clux.place_factory()
         my_obs = state.my_team
 
         if my_obs["metal"] == 0:
             return dict()
-
-        # TODO process in Gamestate greedily
-        potential_spawns = list(zip(*np.where(state.valid_spawns_mask)))
-        pos = potential_spawns[np.random.randint(0, len(potential_spawns))]
-
-        lowest_rubble = 101
-
-        # Find location that is adjacent to ice with minimal rubble available
-        for spawn_loc in potential_spawns:
-            x, y = spawn_loc
-            min_rubble = 100
-            count_zeros = 0
-            has_ice = False
-            for i in range(x - 2, x + 3):
-                for j in range(y - 2, y + 2):
-                    if not valid(i, j):
-                        continue
-                    if AdjToFactory(x, y, i, j):
-                        if state.ice[i, j] == 1:
-                            has_ice = True
-                        min_rubble = min(min_rubble, state.rubble[i, j])
-                        if state.rubble[i, j] == 0:
-                            count_zeros += 1
-            min_rubble -= count_zeros  # count_zeros is nonzero only if min_rubble is 0.
-
-            if has_ice and min_rubble < lowest_rubble:
-                lowest_rubble = min_rubble
-                pos = spawn_loc
 
         metal = min(state.cfg.INIT_WATER_METAL_PER_FACTORY, my_obs["metal"])
         water = min(state.cfg.INIT_WATER_METAL_PER_FACTORY, my_obs["water"])
