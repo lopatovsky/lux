@@ -7,6 +7,7 @@ namespace py = pybind11;
 #include <map>
 #include <unordered_map>
 #include <iostream>
+#include <tuple>
 
 using namespace std;
 
@@ -20,10 +21,20 @@ typedef vector<ii> vii;
 
 int size = 50; // 48 plus boundaries
 
-class Action {
-
-
-};
+std::tuple<int, int> code_to_direction(int code) {
+    switch(code) {
+        case 0:
+            return std::make_tuple(0, 0);
+        case 1:
+            return std::make_tuple(0, -1);
+        case 2:
+            return std::make_tuple(1, 0);
+        case 3:
+            return std::make_tuple(0, 1);
+        default:
+            return std::make_tuple(-1, 0);
+    }
+}
 
 class Factory {
 public:
@@ -48,9 +59,25 @@ public:
     std::unordered_map<std::string, int> cargo;
 };
 
+class Action {
+public:
+    Action(py::array_t<int> raw_action){
+        type = *(raw_action.data(0));
+        dir_code = *(raw_action.data(1));
+        std::tie(dx, dy) = code_to_direction(dir_code);
+        resource = *(raw_action.data(2));
+        amount = *(raw_action.data(3));
+        repeat = *(raw_action.data(4));
+        n = *(raw_action.data(5));
+    }
+
+    int type, dir_code, dx, dy, resource, amount, repeat, n;
+};
+
 class Unit {
 public:
-    void update(std::string u, bool h, bool my, int pow, int x, int y, std::unordered_map<std::string, int> c){
+    void update(std::string u, bool h, bool my, int pow, int x, int y,
+                std::unordered_map<std::string, int> c, std::vector<py::array_t<int>> aq){
        unit_id = u;
        heavy = h;
        is_my = my;
@@ -67,7 +94,7 @@ public:
     int px;
     int py;
     std::unordered_map<std::string, int> cargo;
-
+    std::vector<Action> action_queue;
 };
 
 vvi numpy_to_vector(py::array_t<int> board, int border_value){
@@ -113,13 +140,13 @@ public:
     }
 
     void update_unit(std::string u, bool h, bool my, int pow, int x, int y,
-                     std::unordered_map<std::string, int> c){
+                     std::unordered_map<std::string, int> c, std::vector<py::array_t<int>> aq){
         auto it = units.find(u);
         if (it == units.end()){
             const auto& pair = units.emplace(u, Unit());
             it = pair.first;
         }
-        it->second.update(u,h,my,pow,x,y,c);
+        it->second.update(u,h,my,pow,x,y,c,aq);
     }
 
     void remove_zombie_factory(std::string key){
