@@ -139,12 +139,8 @@ class Agent:
 
         return price
 
-    def move_dist_2(self, x, y):
-        return self.state.clux.shortest_path(x,y,x,y,True)
-
     def move_dist(self, x, y):
         """Move directions: [0, 0], [0, -1], [1, 0], [0, 1], [-1, 0]"""
-        z = self.move_dist_2(x,y) # TODO fake method only to test performance
 
         actions = []
         sub_moves = []
@@ -459,7 +455,7 @@ class Agent:
 
         for factory_id in self.state.factories.keys():
             factory = self.state.factories[factory_id]
-            K = (1100 - self.state.step) / 100
+            K = 6
             if factory.cargo["water"] > K *(1000 - self.state.step) + 20:
                 lux_action[factory_id] = 2  # water and grow lichen at the end of the game
 

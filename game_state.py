@@ -33,11 +33,12 @@ class Factory:
     def __init__(self, obs, state, time, is_my = False):
         self.update(obs, time)
         self.is_my = is_my
-        self.rubble_queue = []
-        self.rubble_queue_head = 0
-        self.last_queue_shuffle = 0
-        self.state = state
-        self.kids = []
+        if is_my:
+            self.rubble_queue = []
+            self.rubble_queue_head = 0
+            self.last_queue_shuffle = 0
+            self.state = state
+            self.kids = []
 
     def update(self, obs, time):
         self.time = time
@@ -45,6 +46,8 @@ class Factory:
         self.strain_id = obs["strain_id"]
         self.power = obs["power"]
         self.pos = obs["pos"]
+        self.pos_x = obs["pos"][0]
+        self.pos_y = obs["pos"][1]
         self.cargo = obs["cargo"]
 
     def move_kids_to(self, step_mother):
@@ -56,7 +59,7 @@ class Factory:
 
     def sort_rubble_queue(self):
         """sort function: dist * K + rubble_value"""
-        K = 3.5
+        K = 4
         self.rubble_queue.sort(key=lambda triple: triple[1] * K + triple[2])
 
     def next_rubble(self):
@@ -155,7 +158,7 @@ class GameState:
 
         self.previous_state = None
 
-        self.clux = clux.CLux(self.ice, self.ore)
+        self.clux = clux.CLux(self.ice, self.ore, self.factories_per_team)
 
         self.set_variable_obs(obs)
 
@@ -186,6 +189,7 @@ class GameState:
             #     self.unit_locs[(unit.pos[0],unit.pos[1])] = unit
         for key in delete_keys:
             del units[key]
+            self.clux.remove_zombie_unit(key)
             #print("del:", key, file=sys.stderr)
 
     #TODO slow
@@ -271,6 +275,7 @@ class GameState:
         for key in delete_keys:
             death_mother = self.factories[key]
             del self.factories[key]
+            self.clux.remove_zombie_factory(key)
             death_mother.move_kids_to(next(iter(self.factories.values())))
 
         his_factories_data = obs.obs["factories"][self.him]
@@ -279,7 +284,15 @@ class GameState:
                 self.his_factories[factory_id].update(his_factories_data[factory_id], self.real_step)
             else:
                 self.his_factories[factory_id] = Factory(his_factories_data[factory_id], self, self.real_step)
-        # Don't care about their death yet.
+        delete_keys = []
+        for fac_id in self.his_factories.keys():
+            fac = self.his_factories[fac_id]
+            if fac.time != self.real_step:
+                delete_keys.append(fac_id)
+        for key in delete_keys:
+            del self.his_factories[key]
+            self.clux.remove_zombie_factory(key)
+
 
         if  len(obs.obs["teams"]) > 0:
             self.my_team = obs.obs["teams"][self.me]
@@ -310,4 +323,16 @@ class GameState:
         self.bonus_time_left = obs.remainingOverageTime
 
         self.clux.update_rubble(self.rubble)
+        self.clux.update_lichen(self.lichen, self.lichen_strains)
 
+        # TODO could also directly push dict with all these.
+        for unit in chain(self.units.values(), self.his_units.values()):
+            self.clux.update_unit( unit.unit_id, unit.unit_type == "HEAVY", unit.is_my,
+                                   unit.power, unit.pos[0], unit.pos[1], unit.cargo)
+                                   # TODO unit.action_queue)
+
+        for f in chain(self.factories.values(), self.his_factories.values()):
+            self.clux.update_factory( f.unit_id, f.strain_id, f.is_my,
+                                      f.power, f.pos[0], f.pos[1], f.cargo)
+
+        self.clux.update_assorted( self.real_step, self.step)
