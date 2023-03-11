@@ -326,11 +326,14 @@ class GameState:
         self.clux.update_rubble(self.rubble)
         self.clux.update_lichen(self.lichen, self.lichen_strains)
 
-        # TODO could also directly push dict with all these.
+
         for unit in chain(self.units.values(), self.his_units.values()):
+            mother_ship_id = ""
+            if unit.is_my:
+                mother_ship_id = unit.mother_ship.unit_id
             self.clux.update_unit( unit.unit_id, unit.unit_type == "HEAVY", unit.is_my,
-                                   unit.power, unit.pos[0], unit.pos[1], unit.cargo,
-                                   unit.action_queue)
+                                       unit.power, unit.pos[0], unit.pos[1], unit.cargo,
+                                       unit.action_queue, mother_ship_id)
 
         for f in chain(self.factories.values(), self.his_factories.values()):
             self.clux.update_factory( f.unit_id, f.strain_id, f.is_my,

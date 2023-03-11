@@ -394,7 +394,7 @@ class Agent:
                 else:
                     if np.random.rand() < 0.8 or self.state.step > 700:
                         (rx, ry), _ , _ = unit.mother_ship.next_rubble()
-                        lux_action[unit_id] = clux.remove_rubble_action(unit_id, rx, ry)
+                        lux_action[unit_id] = clux.remove_rubble_action(unit_id)
                     else: lux_action[unit_id] = clux.mine_ore_action(unit_id)
                     # .. TODO many other actions
 

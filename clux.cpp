@@ -138,6 +138,7 @@ public:
     ii pos;
     // 'ice', 'ore', 'water', 'metal'
     std::unordered_map<std::string, int> cargo;
+    vector<pair<int,ii>> rubble_vec;
 };
 
 class Action {
@@ -195,7 +196,7 @@ Action transfer_action(int resource_code){
 class Unit {
 public:
     void update(std::string u, bool h, bool my, int pow, int x, int y,
-                std::unordered_map<std::string, int> c, std::vector<py::array_t<int>> aq){
+                std::unordered_map<std::string, int>& c, std::vector<py::array_t<int>>& aq, string& ms){
        unit_id = u;
        is_heavy = h;
        is_my = my;
@@ -204,6 +205,7 @@ public:
        py = y;
        pos = {x,y};
        cargo = c;
+       mother_ship_id = ms;
     }
 
     std::string unit_id;
@@ -215,6 +217,7 @@ public:
     ii pos;
     std::unordered_map<std::string, int> cargo;
     std::vector<Action> action_queue;
+    std::string mother_ship_id;
 };
 
 vvi numpy_to_vector(py::array_t<int> array, int border_value){
@@ -361,13 +364,13 @@ public:
     }
 
     void update_unit(std::string u, bool h, bool my, int pow, int x, int y,
-                     std::unordered_map<std::string, int> c, std::vector<py::array_t<int>> aq){
+                     std::unordered_map<std::string, int>& c, std::vector<py::array_t<int>>& aq, string& ms ){
         auto it = units.find(u);
         if (it == units.end()){
             const auto& pair = units.emplace(u, Unit());
             it = pair.first;
         }
-        it->second.update(u,h,my,pow,x,y,c,aq);
+        it->second.update(u,h,my,pow,x,y,c,aq,ms);
     }
 
     void remove_zombie_factory(std::string key){
@@ -397,12 +400,68 @@ public:
         }
 
         // invalidate move to opponents factories
-        for(auto it: his_factories){
+        for(auto &it: his_factories){
             for(const auto& [x, y]: iterate_mask({it.ss->px, it.ss->py}, factory_mask)){
                 if(valid(x, y)) rubble[x][y] = 1e6;
             }
         }
+
+        divide_and_conquer_advanced();
     }
+
+
+    void divide_and_conquer_advanced(){
+        assigned_rubbles = board(-1e6);
+
+        auto economy_zone = board(-1);
+        auto distance = board(1e6);
+        queue<ii> q;
+        queue<int> q_dist;
+
+        Factory* factory_strain[20];  // factory by strain_id;
+
+        for(auto& f : factories){
+            factory_strain[f.ss.strain_id] = &f.ss;
+            f.ss.rubble_vec.clear();
+            for(const auto& [x, y]: iterate_mask(f.ss.pos, factory_mask)){
+                q.push({x,y});
+                q_dist.push(0);
+                economy_zone[x][y] = f.ss.strain_id;
+                economy_zone[x][y] = f.ss.strain_id;
+            }
+        }
+
+        REP(i,N)REP(j,N)
+            if (lichen_strains[i][j] >= 0) {
+                q.push({i, j});
+                q_dist.push(0);
+                economy_zone[i][j] = lichen_strains[i][j];
+            }
+
+        while (!q.empty()) {
+            const auto& [x,y] = q.front();
+            int dist = q_dist.front();
+            q.pop(); q_dist.pop();
+            int ez = economy_zone[x][y];
+
+            FOR(code,1,4){
+                int nx = x + code_to_direction[code].xx;
+                int ny = y + code_to_direction[code].yy;
+                if (valid(nx,ny) && economy_zone[nx][ny] == -1){
+                    economy_zone[nx][ny] = ez;
+                    distance[nx][ny] = dist;
+                    q.push({nx,ny});
+                    q_dist.push(dist+1);
+                }
+            }
+        }
+
+        REP(i,N)REP(j,N)
+            if(rubble[i][j] && economy_zone[i][j] >= 0){
+                factory_strain[economy_zone[i][j]]->rubble_vec.PB(MP(distance[i][j],MP(i,j)));
+            }
+    }
+
 
     // optimize on shortest path and energy
 
@@ -452,9 +511,6 @@ public:
                  }
             }
         }
-
-        // print_board(dir);
-        // print_board(distance_map);
 
         int energy = distance_map[x1][y1].ff;
         int turns = distance_map[x1][y1].ss;
@@ -740,11 +796,40 @@ public:
         return mine_resource_action(key_id, 0);
     }
 
+    ii assign_rubble( Factory * factory, int px, int py){
+        int best_x = 0, best_y = 0, best_score = 1e9;
 
-    std::vector<py::array_t<int>> remove_rubble_action(string key_id, int rx, int ry){
+        // TODO some placeholder for already selected ?
+        for (auto& [dist, loc]: factory->rubble_vec){
+            int last_access = assigned_rubbles[loc.xx][loc.yy];
+            if (step - last_access < 50) continue;
+
+            int rubble_value = rubble[loc.xx][loc.yy];
+            int dist_from_unit = distance(px, py, loc.xx, loc.yy);
+
+            int D = 4;
+            int K = 1;
+            int L = 2;
+
+            int score = D * dist + K * rubble_value + L * dist_from_unit;
+
+            if (score < best_score){
+                best_score = score;
+                best_x = loc.xx;
+                best_y = loc.yy;
+            }
+        }
+        cerr << "For: " << px << ", " << py << "Assign rubble: " << best_x << ", " << best_y << endl;
+
+        assigned_rubbles[best_x][best_y] = step;
+
+        return {best_x, best_y};
+    }
+
+    std::vector<py::array_t<int>> remove_rubble_action(string key_id){
 
         auto& unit = units[key_id];
-        auto* mother = get_closest_factory( unit.px, unit.py, my_factories);
+        auto* mother = my_factories[unit.mother_ship_id]; //get_closest_factory( unit.px, unit.py, my_factories);
 
         //# PREPARE ACTION
         if (is_in_factory(mother->pos, unit.pos)){
@@ -765,7 +850,9 @@ public:
         }
 
         //ii rubble_loc = shortest_path_to_dig(step, unit.px, unit.py, rubble, unit.is_heavy);
-        // find_rubble(unit.px, unit.py);
+        const auto [rx, ry] = assign_rubble(mother, unit.px, unit.py);
+
+
         auto [rubble_power, rubble_path_actions] =
                      shortest_path( step, unit.px, unit.py, rx, ry, unit.is_heavy);
 
@@ -845,7 +932,7 @@ private:
     int real_step, step, factories_per_team;
     vvi ice, ore, rubble, lichen, lichen_strains;
 
-    vvi ice_dist, ore_dist, rubble_around_factory;
+    vvi ice_dist, ore_dist, rubble_around_factory, assigned_rubbles;
 };
 
 
