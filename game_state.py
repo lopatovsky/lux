@@ -64,18 +64,21 @@ class Factory:
 
     def next_rubble(self):
         # move head to the start of the queue so some unconsumed rubble can be consumed.
-        if self.time - self.last_queue_shuffle > 150:
+        if self.time - self.last_queue_shuffle > 40:
             self.last_queue_shuffle = self.time
             self.rubble_queue_head = 0
 
         while(True):
             if self.rubble_queue_head >= len(self.rubble_queue):
-                return ((0,0),0,1)
+                return ((np.random.randint(low=10, high=40), np.random.randint(low=10, high=40)),0,1)
             rubble = self.rubble_queue[self.rubble_queue_head]
             if self.state.rubble[rubble[0]] > 0:
+                self.consume_rubble()
                 return rubble[0], rubble[1], self.state.rubble[rubble[0]]  # always returns current rubble state
             # skip rubble-less tile
             self.rubble_queue_head+=1
+
+
 
     def consume_rubble(self):
         self.rubble_queue_head += 1
@@ -133,8 +136,6 @@ class GameState:
         self.ore = np.array(obs.obs["board"]["ore"])
 
         self.ice_distance = build_distance_map(self.ice, 1)
-        self.ore_distance = build_distance_map(self.ore, 1)
-        # TODO for rubble,oponent lichen.. but this changes~~
 
         self.factories_per_team = obs.obs["board"]["factories_per_team"]
 

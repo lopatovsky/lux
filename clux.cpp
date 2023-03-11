@@ -582,11 +582,61 @@ public:
         return {energy, actions};
     }
 
+    // Optimize on energy and turns
+    std::pair<int, int> shortest_path_to_dig(int t, int x0, int y0, vvi board_map, bool is_heavy){
+        // int step = TODO for energy
+
+        // TODO for hypercorrect ..should be triple< energy, len, turns. maybe shorter path exists with more turns.
+
+        vvii distance_map(N, vii(N, MP(1e6,1e6)));  // map of (distance, turn/segment) pairs
+        auto visited = board(0);
+        auto dir = board(0);
+
+        priority_queue<pair<ii,ii>, vector<pair<ii,ii>>, greater<pair<ii,ii>> > q;
+        q.push(MP(MP(0,0),MP(x0, y0)));  // (dist + turns/segment count) (pos_x, pos_y)
+        dir[x0][y0] = 0;  // holds direction from which it was visited 1-4.
+        distance_map[x0][y0] = MP(0,0);
+
+        while (!q.empty()) {
+
+            const auto& [my_obj, point] = q.top();
+            int my_dist = my_obj.xx, my_turns = my_obj.yy;
+            int x = point.xx, y = point.yy;
+            q.pop();
+
+            if (board_map[x][y] > 0)
+                return {x,y};
+
+            if(visited[x][y]) continue;
+            visited[x][y] = 1;
+            int my_dir = dir[x][y];
+
+            FOR(code,1,4){
+                 int nx = x + code_to_direction[code].xx;
+                 int ny = y + code_to_direction[code].yy;
+                 if (valid(nx,ny) && !visited[nx][ny]){
+                    int turns = (my_dir == code) ? my_turns : my_turns + 1;
+                    int price = step_price(rubble[nx][ny], is_heavy);  // TODO!!! NO GO factories.
+                    int dist = my_dist + price;
+
+                    ii obj = MP(dist, turns);
+
+                    if (obj < distance_map[nx][ny]){
+                        distance_map[nx][ny] = obj;
+                        dir[nx][ny] = code;
+                        q.push(MP(obj,MP(nx, ny)));
+                    }
+                 }
+            }
+        }
+    }
+
+
     ii find_rubble(int px, int py){
         return MP(0,0);
     }
 
-    vector<Action> prepare_unit(const Unit& unit){
+    vector<Action> prepare_unit(const Unit& unit, Factory* mother){
         vector<Action> actions;
         if (unit.cargo.at("ore") > 0){
             actions.PB(transfer_action(1));
@@ -594,36 +644,38 @@ public:
         if (unit.cargo.at("ice") > 0){
             actions.PB(transfer_action(0));
         }
+
+        int max_to_take = unit.is_heavy ? 500 : 120;
+        if (mother->power > 800){
+            max_to_take = unit.is_heavy ? 600 : 150;
+        }
+        if (mother->power > 2000){
+            max_to_take = unit.is_heavy ? 1400 : 150;
+        }
+        if (mother->power > 3500){
+            max_to_take = unit.is_heavy ? 3000 : 150;
+        }
+
+        int power_to_take = 0;
         if (unit.is_heavy && unit.power < 2500){
-            actions.PB(pick_up_action(4, 2950 - unit.power));
+            power_to_take = max( 0, max_to_take - unit.power);
         }else if(!unit.is_heavy && unit.power < 140){
-            actions.PB(pick_up_action(4, 150 - unit.power));
+            power_to_take = max( 0, max_to_take - unit.power);
+        }
+        if (power_to_take > (unit.is_heavy ? 100 : 20)){
+            power_to_take = min( power_to_take, mother->power);
+            actions.PB(pick_up_action(4, power_to_take));
         }
         return actions;
     }
 
     std::vector<py::array_t<int>> mine_resource_action(string key_id, int resource_id){
-
-
-    }
-
-    std::vector<py::array_t<int>> mine_ore_action(string key_id){
-        return mine_resource_action(unit, 1)
-    }
-
-    std::vector<py::array_t<int>> mine_ice_action(string key_id){
-        return mine_resource_action(unit, 0)
-    }
-
-
-    std::vector<py::array_t<int>> remove_rubble_action(string key_id){
-        // TODO store objective or something
         auto& unit = units[key_id];
         auto* mother = get_closest_factory( unit.px, unit.py, my_factories);
 
         //# PREPARE ACTION
         if (is_in_factory(mother->pos, unit.pos)){
-            auto prepare_actions = prepare_unit(unit);
+            auto prepare_actions = prepare_unit(unit, mother);
             if (!prepare_actions.empty()){
                 cerr << unit.unit_id << " is gonna be prepared!" << endl;
                 return get_raw_actions(prepare_actions);
@@ -635,33 +687,107 @@ public:
         //# GO HOME ACTION
         int energy_treshold = unit.is_heavy? 240 : 20;  // energy of four digs.
         if( unit.power < path_power + energy_treshold){
-            cerr << unit.unit_id << " no rubble go home!" << endl;
+            cerr << unit.unit_id << " no energy, go home!" << endl;
             return get_raw_actions(path_actions);
         }
 
-        ii rubble_loc = find_rubble(unit.px, unit.py);
-        auto [rubble_power, rubble_path_actions] =
-                     shortest_path( step, unit.px, unit.py, rubble_loc.xx, rubble_loc.yy, unit.is_heavy);
+        // Only this one line is different, lol:
+        ii resource_loc = shortest_path_to_dig(step, unit.px, unit.py, (resource_id? ore: ice), unit.is_heavy);
+
+        auto [resource_power, resource_path_actions] =
+                     shortest_path( step, unit.px, unit.py, resource_loc.xx, resource_loc.yy, unit.is_heavy);
 
         auto [worst_case_home_power, home_actions] =
-                     shortest_path( 30 /*worst_case*/, rubble_loc.xx, rubble_loc.yy, mother->px, mother->py, unit.is_heavy);
-        int rest_power = path_power + worst_case_home_power;
+                     shortest_path( 30 /*worst_case*/, resource_loc.xx, resource_loc.yy, mother->px, mother->py, unit.is_heavy);
+        int rest_power = unit.power - (path_power + worst_case_home_power);
 
-        int dig_number = rest_power / (unit.is_heavy ? 60 : 5);
+        int dig_number = rest_power / (unit.is_heavy ? 50 : 5); // 60 -> 50 because unit gets some energy from sun.
 
         //# GO HOME ACTION
         if(dig_number < 1){
-            cerr << unit.unit_id << " no rubble go home!" << endl;
+            cerr << unit.unit_id << " no energy to mine, go home!" << endl;
             return get_raw_actions(path_actions);
         }
 
-        int max_digs = unit.is_heavy ? (rubble[rubble_loc.xx][rubble_loc.yy]+19)/ 20:
-                                       (rubble[rubble_loc.xx][rubble_loc.yy]+1 )/  2;
+        // Also this is different.
+        int cargo_load = unit.cargo.at("ice") + unit.cargo.at("ore") + unit.cargo.at("water") + unit.cargo.at("metal");
+        int cargo_space = (unit.is_heavy? 3000 : 100) - cargo_load;
+
+        int max_digs = unit.is_heavy ? cargo_space / 20:
+                                       cargo_space / 2;
+        // end of different
+
+
         dig_number = min(dig_number, max_digs);
 
         //# GO DIG ACTION
         if (dig_number){
-            cerr << unit.unit_id << " Digging " << dig_number << " rubble!" << endl;
+            cerr << unit.unit_id << " Digging " << dig_number << " resource!" << endl;
+            resource_path_actions.PB(dig_action(dig_number));
+        }else cerr << unit.unit_id << " I want to dig, but no more cargo space!" << endl;
+
+        return get_raw_actions(resource_path_actions);
+
+
+
+    }
+
+    std::vector<py::array_t<int>> mine_ore_action(string key_id){
+        return mine_resource_action(key_id, 1);
+    }
+
+    std::vector<py::array_t<int>> mine_ice_action(string key_id){
+        return mine_resource_action(key_id, 0);
+    }
+
+
+    std::vector<py::array_t<int>> remove_rubble_action(string key_id, int rx, int ry){
+
+        auto& unit = units[key_id];
+        auto* mother = get_closest_factory( unit.px, unit.py, my_factories);
+
+        //# PREPARE ACTION
+        if (is_in_factory(mother->pos, unit.pos)){
+            auto prepare_actions = prepare_unit(unit, mother);
+            if (!prepare_actions.empty()){
+                cerr << unit.unit_id << " is gonna be prepared!" << endl;
+                return get_raw_actions(prepare_actions);
+            }
+        }
+
+        auto [path_power, path_actions] = shortest_path( step, unit.px, unit.py, mother->px, mother->py, unit.is_heavy);
+
+        //# GO HOME ACTION
+        int energy_treshold = unit.is_heavy? 240 : 20;  // energy of four digs.
+        if( unit.power < path_power + energy_treshold){
+            cerr << unit.unit_id << " no energy go home!" << endl;
+            return get_raw_actions(path_actions);
+        }
+
+        //ii rubble_loc = shortest_path_to_dig(step, unit.px, unit.py, rubble, unit.is_heavy);
+        // find_rubble(unit.px, unit.py);
+        auto [rubble_power, rubble_path_actions] =
+                     shortest_path( step, unit.px, unit.py, rx, ry, unit.is_heavy);
+
+        auto [worst_case_home_power, home_actions] =
+                     shortest_path( 30 /*worst_case*/, rx, ry, mother->px, mother->py, unit.is_heavy);
+        int rest_power = unit.power - (path_power + worst_case_home_power);
+
+        int dig_number = rest_power / (unit.is_heavy ? 50 : 5); // 60 -> 50 because unit gets some energy from sun.
+
+        //# GO HOME ACTION
+        if(dig_number < 1){
+            cerr << unit.unit_id << " no energy to dig go home!" << endl;
+            return get_raw_actions(path_actions);
+        }
+
+        int max_digs = unit.is_heavy ? (rubble[rx][ry]+19)/ 20:
+                                       (rubble[rx][ry]+1 )/  2;
+        dig_number = min(dig_number, max_digs);
+
+        //# GO DIG ACTION
+        if (dig_number){
+            cerr << unit.unit_id << " Digging " << dig_number << " rubble! at: " << rx << ", " << ry << endl;
             rubble_path_actions.PB(dig_action(dig_number));
         }else cerr << unit.unit_id << " well this is strange, I want to dig, but there is no rubble!" << endl;
 
@@ -694,7 +820,7 @@ public:
 
         int rubble_acc = rubble_around_factory[i][j];
 
-        return ice_distance * 1000 + ore_distance + rubble_acc / 150;
+        return ice_distance * 2000 + ore_distance + rubble_acc;
     }
 
     ii place_factory(){
@@ -739,7 +865,7 @@ PYBIND11_MODULE(clux, m) {
 
         .def("remove_rubble_action", &CLux::remove_rubble_action)
         .def("mine_ice_action", &CLux::mine_ice_action)
-        .def("mine_ice_action", &CLux::mine_ore_action)
+        .def("mine_ore_action", &CLux::mine_ore_action)
 
         .def("shortest_path", &CLux::shortest_path);
 }

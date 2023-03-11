@@ -206,21 +206,16 @@ class Agent:
         actions.extend(self.pick_up_action(4, power)) # 4: power
 
         return actions
-    def mine_ice_action(self, unit):
-        unit.occupation = "ICE"
-        return self.mine_resource_action(unit, self.state.ice_distance, 0)  # 0: ice
 
-        # find closest ice
-        # if home: charge till possible to do action -how to
-        # get_move_actions to get there and energy?
-        # dig -- how many times? + e
-        # get home + e
-        # if not enough energy:
-        # go home to charge first. # need action or just stay
 
     def mine_ore_action(self, unit):
         unit.occupation = "ORE"
         return self.mine_resource_action(unit, self.state.ore_distance, 1)
+        #rand_num = np.random.randint(low=1, high=5)
+
+    def mine_ice_action(self, unit):
+        unit.occupation = "ICE"
+        return self.mine_resource_action(unit, self.state.ice_distance, 0)
         #rand_num = np.random.randint(low=1, high=5)
 
     def remove_rubble_action(self, unit):
@@ -393,13 +388,14 @@ class Agent:
         for unit_id in units.keys():
             unit = units[unit_id]
 
-            if len(unit.action_queue) == 0 or unit.occupation == "NO":
+            if len(unit.action_queue) == 0:
                 if unit.unit_type == 'HEAVY':
-                    lux_action[unit_id] = self.mine_ice_action(unit)
+                    lux_action[unit_id] = self.mine_ice_action(unit) # clux.mine_ice_action(unit_id)
                 else:
-                    #if np.random.rand() < 1.2:
-                    lux_action[unit_id] = clux.remove_rubble_action(unit_id)
-                    #else: lux_action[unit_id] = self.mine_ore_action(unit)
+                    if np.random.rand() < 0.8 or self.state.step > 700:
+                        (rx, ry), _ , _ = unit.mother_ship.next_rubble()
+                        lux_action[unit_id] = clux.remove_rubble_action(unit_id, rx, ry)
+                    else: lux_action[unit_id] = clux.mine_ore_action(unit_id)
                     # .. TODO many other actions
 
         # Collisions
