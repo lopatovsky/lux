@@ -302,11 +302,11 @@ class Agent:
         # TODO check for energy consumption of the current move & if power are the same
         if unit.unit_type == c_unit.unit_type:
             if move_code == 0 and collision_code > 0:
-                # if c_unit.is_my and collision_code == 2:
-                #     return True  # TODO dangerous move, but.
+                if c_unit.is_my or self.insufficient_power( unit ):
+                    return True  # standing or weak unit is sacred
                 return False
             elif collision_code == 0 and move_code > 0:
-                if c_unit.is_my and self.insufficient_power( c_unit ):
+                if c_unit.is_my or self.insufficient_power( c_unit ): # never move into standing unit or weak unit
                     return False
                 return True  # returning True means possible killing.
             else:
