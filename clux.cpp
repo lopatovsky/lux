@@ -6,6 +6,7 @@ namespace py = pybind11;
 #include <vector>
 #include <queue>
 #include <map>
+#include <algorithm>
 #include <unordered_map>
 #include <iostream>
 #include <tuple>
@@ -18,6 +19,7 @@ typedef pair<int,int> ii;
 typedef vector<int> vi;
 typedef vector<vi> vvi;
 typedef vector<ii> vii;
+typedef vector<vii> vvii;
 
 #define MP make_pair
 #define PB push_back
@@ -32,6 +34,11 @@ typedef vector<ii> vii;
 
 int N = 48;
 
+bool is_day(int step){
+    int mod = step % 50;
+    return mod < 30;
+}
+
 bool valid(int i, int j){
     return i >= 0 && j >= 0 && i < N && j < N;
 }
@@ -40,20 +47,7 @@ int distance(int x0, int y0, int x1, int y1){
     return abs(x0 - x1) + abs(y0 - y1);
 }
 
-std::tuple<int, int> code_to_direction(int code) {
-    switch(code) {
-        case 0:
-            return std::make_tuple(0, 0);
-        case 1:
-            return std::make_tuple(0, -1);
-        case 2:
-            return std::make_tuple(1, 0);
-        case 3:
-            return std::make_tuple(0, 1);
-        default:
-            return std::make_tuple(-1, 0);
-    }
-}
+vii code_to_direction = {{0, 0}, {0, -1}, {1, 0}, {0, 1}, {-1, 0}};
 
 vvi board(){
     vvi b(N, vi(N));
@@ -65,51 +59,57 @@ vvi board(int val){
     return b;
 }
 
-    // LOL
-    const vvi& factory_surrounding_mask = {
-        {0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0},
-        {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
-        {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
-        {0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},
-        {1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1},
-        {1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1},
-        {1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1},
-        {0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},
-        {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
-        {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
-        {0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0},
-    };
+int step_price(int rubble_value, bool heavy){
+    // light cost of moving: floor( 1 + 0.05*rubble )
+    // heavy cost of moving: floor( 20 + 1*rubble )
+    return heavy ? 20 + rubble_value : 1 + rubble_value/20;
+}
+
+// LOL
+const vvi& factory_surrounding_mask = {
+    {0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+    {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
+    {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
+    {0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},
+    {1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1},
+    {1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1},
+    {1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1},
+    {0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},
+    {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
+    {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
+    {0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0},
+};
 
 
-    const vvi& factory_close_mask = {
-        {0, 1, 1, 1, 0},
-        {1, 0, 0, 0, 1},
-        {1, 0, 0, 0, 1},
-        {1, 0, 0, 0, 1},
-        {0, 1, 1, 1, 0}
-    };
+const vvi& factory_close_mask = {
+    {0, 1, 1, 1, 0},
+    {1, 0, 0, 0, 1},
+    {1, 0, 0, 0, 1},
+    {1, 0, 0, 0, 1},
+    {0, 1, 1, 1, 0}
+};
 
-    const vvi& factory_mask = {
-        {1, 1, 1},
-        {1, 1, 1},
-        {1, 1, 1}
-    };
+const vvi& factory_mask = {
+    {1, 1, 1},
+    {1, 1, 1},
+    {1, 1, 1}
+};
 
-    vii iterate_mask( ii center, const vvi& mask){
-        int mask_size = mask.size();
-        int shift = mask_size / 2;
-        vii points;
-        REP(i,mask_size)
-            REP(j,mask_size){
-                if (mask[i][j]){
-                    points.PB(MP(center.xx + i - shift,
-                                 center.yy + j - shift));
-                }
+vii iterate_mask( ii center, const vvi& mask){
+    int mask_size = mask.size();
+    int shift = mask_size / 2;
+    vii points;
+    REP(i,mask_size)
+        REP(j,mask_size){
+            if (mask[i][j]){
+                points.PB(MP(center.xx + i - shift,
+                             center.yy + j - shift));
             }
-        return points;
-    }
+        }
+    return points;
+}
 
 class Factory {
 public:
@@ -139,15 +139,34 @@ public:
     Action(py::array_t<int> raw_action){
         type = *(raw_action.data(0));
         dir_code = *(raw_action.data(1));
-        std::tie(dx, dy) = code_to_direction(dir_code);
+        std::tie(dx, dy) = code_to_direction[dir_code];
         resource = *(raw_action.data(2));
         amount = *(raw_action.data(3));
         repeat = *(raw_action.data(4));
         n = *(raw_action.data(5));
     }
 
+    Action(int type_, int dir_code_, int resource_, int amount_, int repeat_, int n_): type(type_), dir_code(dir_code_),
+                                resource(resource_), amount(amount_), repeat(repeat_), n(n_){}
+
+    py::array_t<int> to_raw_action(){
+        py::array_t<int> result({6});
+        int* data = result.mutable_data();
+        data[0] = type;
+        data[1] = dir_code;
+        data[2] = resource;
+        data[3] = amount;
+        data[4] = repeat;
+        data[5] = n;
+        return result;
+    }
+
     int type, dir_code, dx, dy, resource, amount, repeat, n;
 };
+
+Action move_action(int dir_code, int n, int repeat = 0){
+    return Action(0, dir_code, 0, 0, repeat, n);
+}
 
 class Unit {
 public:
@@ -216,13 +235,35 @@ vvi distance_map(vvi map){
     return distance_map;
 }
 
-void print_board(vvi board){
+void print_board(const vvi& board){
     REP(i,N){
         REP(j,N){
-            cerr << board[j][i] << "|";
+            cerr << (board[j][i] == 1e6 ? 0 : board[j][i]) << "|";
         }
         cerr << endl;
     }
+}
+
+void print_board(const vector<vector<float>>& double_vec){
+    vvi int_vec;
+
+    for (const auto& row : double_vec) {
+        vector<int> int_row;
+        for (const auto& elem : row) {
+            int_row.push_back(static_cast<int>(elem));
+        }
+        int_vec.push_back(int_row);
+    }
+    print_board(int_vec);
+}
+
+int closest_factory(int i, int j, const std::unordered_map <std::string, Factory>& factories){
+    int closest_factory = 100;
+
+    for(const auto& f: factories){
+         closest_factory = min(closest_factory, distance(f.ss.px, f.ss.py, i, j));
+    }
+    return closest_factory;
 }
 
 vvi get_rubble_around_factory_map(vvi rubble){
@@ -239,7 +280,6 @@ vvi get_rubble_around_factory_map(vvi rubble){
         }
         acc_map[i][j] = rubble_sum;
     }
-    print_board(acc_map);
     return acc_map;
 }
 
@@ -295,10 +335,194 @@ public:
     void update_assorted(int real_step_, int step_){
         real_step = real_step_;
         step = step_;
+
+        my_factories.clear();
+        his_factories.clear();
+        for(auto it: factories) {
+            if (it.ss.is_my) my_factories[it.ff] = &it.ss;
+            else his_factories[it.ff] = &it.ss;
+        }
+        // TODO: same for units.
+
+        for(auto it: his_factories){
+            for(const auto& [x, y]: iterate_mask({it.ss->px, it.ss->py}, factory_mask)){
+                if(valid(x, y)) rubble[x][y] = 1e6;
+            }
+        }
     }
 
-    int shortest_path(int x1, int y1, int x2, int y2, bool is_heavy){
-        return shortest_path_(x1+1,y1+1,x2+1,y2+1,is_heavy);
+    // optimize on shortest path and energy
+
+    // TODO this path may still be ignoring his. factories
+    std::vector<py::array_t<int>> shortest_path_2(int x0, int y0, int x1, int y1, bool is_heavy){
+        // int step = TODO for energy
+
+        // TODO for hypercorrect ..should be triple< energy, len, turns. maybe shorter path exists with more turns.
+
+        vvii distance_map(N, vii(N, MP(1e6,1e6)));  // map of (shortest_path, energy) pairs
+        auto visited = board(0);
+        auto dir = board(0);
+
+        priority_queue<pair<ii,ii>, vector<pair<ii,ii>>, greater<pair<ii,ii>> > q;
+        q.push(MP(MP(0,0),MP(x0, y0)));  // (shortest_path, energy) (pos_x, pos_y)
+        dir[x0][y0] = 0;  // holds direction from which it was visited 1-4.
+        distance_map[x0][y0] = MP(0,0);
+
+        while (!q.empty()) {
+
+            const auto& [my_obj, point] = q.top();
+            int my_dist = my_obj.xx, my_energy = my_obj.yy;
+            int x = point.xx, y = point.yy;
+            q.pop();
+
+            if (x==x1 && y==y1) break;
+
+            if(visited[x][y]) continue;
+            visited[x][y] = 1;
+            // int my_dir = dir[x][y];
+
+            FOR(code,1,4){
+                 int nx = x + code_to_direction[code].xx;
+                 int ny = y + code_to_direction[code].yy;
+                 if (valid(nx,ny) && !visited[nx][ny]){
+                    int dist = my_dist + 1;
+                    int price = step_price(rubble[nx][ny], is_heavy);  // TODO!!! NO GO factories.
+                    int energy = my_energy + price;
+
+                    ii obj = MP(dist, energy);
+
+                    if (obj < distance_map[nx][ny]){
+                        distance_map[nx][ny] = obj;
+                        dir[nx][ny] = code;
+                        q.push(MP(obj,MP(nx, ny)));
+                    }
+                 }
+            }
+        }
+
+        // print_board(dir);
+        // print_board(distance_map);
+
+        int energy = distance_map[x1][y1].ff;
+        int turns = distance_map[x1][y1].ss;
+
+        int x = x1;
+        int y = y1;
+
+        int len = 0;
+        vector<int> path;
+
+        while( dir[x][y] != 0){
+            path.PB(dir[x][y]);
+            const auto& p = code_to_direction[dir[x][y]];
+            x = x - p.xx;
+            y = y - p.yy;
+            ++len;
+        }
+        reverse(path.begin(), path.end());
+
+        vector<Action> actions;
+        int start_segment = 0;
+        path.PB(0);  // padding for last segment
+
+        int path_size = path.size();
+        FOR(i,1, path_size-1){
+          if(path[i] != path[i-1]){
+            actions.PB(move_action(path[i-1], i - start_segment));
+            start_segment = i;
+          }
+        }
+
+        std::vector<py::array_t<int>> raw_actions(actions.size());
+        REP(i,actions.size()) raw_actions[i] = actions[i].to_raw_action();
+
+        return raw_actions;
+    }
+
+    // Optimize on energy and turns
+    std::vector<py::array_t<int>> shortest_path(int x0, int y0, int x1, int y1, bool is_heavy){
+        // int step = TODO for energy
+
+        // TODO for hypercorrect ..should be triple< energy, len, turns. maybe shorter path exists with more turns.
+
+        vvii distance_map(N, vii(N, MP(1e6,1e6)));  // map of (distance, turn/segment) pairs
+        auto visited = board(0);
+        auto dir = board(0);
+
+        priority_queue<pair<ii,ii>, vector<pair<ii,ii>>, greater<pair<ii,ii>> > q;
+        q.push(MP(MP(0,0),MP(x0, y0)));  // (dist + turns/segment count) (pos_x, pos_y)
+        dir[x0][y0] = 0;  // holds direction from which it was visited 1-4.
+        distance_map[x0][y0] = MP(0,0);
+
+        while (!q.empty()) {
+
+            const auto& [my_obj, point] = q.top();
+            int my_dist = my_obj.xx, my_turns = my_obj.yy;
+            int x = point.xx, y = point.yy;
+            q.pop();
+
+            if (x==x1 && y==y1) break;
+
+            if(visited[x][y]) continue;
+            visited[x][y] = 1;
+            int my_dir = dir[x][y];
+
+            FOR(code,1,4){
+                 int nx = x + code_to_direction[code].xx;
+                 int ny = y + code_to_direction[code].yy;
+                 if (valid(nx,ny) && !visited[nx][ny]){
+                    int turns = (my_dir == code) ? my_turns : my_turns + 1;
+                    int price = step_price(rubble[nx][ny], is_heavy);  // TODO!!! NO GO factories.
+                    int dist = my_dist + price;
+
+                    ii obj = MP(dist, turns);
+
+                    if (obj < distance_map[nx][ny]){
+                        distance_map[nx][ny] = obj;
+                        dir[nx][ny] = code;
+                        q.push(MP(obj,MP(nx, ny)));
+                    }
+                 }
+            }
+        }
+
+        // print_board(dir);
+        // print_board(distance_map);
+
+        int energy = distance_map[x1][y1].ff;
+        int turns = distance_map[x1][y1].ss;
+
+        int x = x1;
+        int y = y1;
+
+        int len = 0;
+        vector<int> path;
+
+        while( dir[x][y] != 0){
+            path.PB(dir[x][y]);
+            const auto& p = code_to_direction[dir[x][y]];
+            x = x - p.xx;
+            y = y - p.yy;
+            ++len;
+        }
+        reverse(path.begin(), path.end());
+
+        vector<Action> actions;
+        int start_segment = 0;
+        path.PB(0);  // padding for last segment
+
+        int path_size = path.size();
+        FOR(i,1, path_size-1){
+          if(path[i] != path[i-1]){
+            actions.PB(move_action(path[i-1], i - start_segment));
+            start_segment = i;
+          }
+        }
+
+        std::vector<py::array_t<int>> raw_actions(actions.size());
+        REP(i,actions.size()) raw_actions[i] = actions[i].to_raw_action();
+
+        return raw_actions;
     }
 
     int factory_placement_value(int i, int j){
@@ -310,13 +534,8 @@ public:
             if( !valid(x,y) || ice[x][y] || ore[x][y]) return 1000000;
         }
 
-        int closest_factory = 100;
-
-        for(const auto& f: factories){
-             // cerr << "c++ " << i << " " << j << " " << distance(f.ss.px, f.ss.py, i, j) << " - " << factories.size() << endl;
-             closest_factory = min(closest_factory, distance(f.ss.px, f.ss.py, i, j));
-        }
-        if (closest_factory <= 7) return 1000000;
+        int factory_dist = closest_factory(i,j, factories);
+        if (factory_dist <= 7) return 1000000;
 
         int ice_distance = 100;
         int ore_distance = 100;
@@ -328,9 +547,11 @@ public:
             }
         }
 
+        // todo use my factory_dist in the function. seed 45
+
         int rubble_acc = rubble_around_factory[i][j];
 
-        return ice_distance * 2000 + ore_distance + rubble_acc;
+        return ice_distance * 1000 + ore_distance + rubble_acc / 150;
     }
 
     ii place_factory(){
@@ -346,17 +567,11 @@ public:
         return {x,y};
     }
 
-
-    // TODO factories
-
 private:
-    int shortest_path_(int x1, int y1, int x2, int y2, bool is_heavy){
-       int out=0;
-       return out;
-    }
-
     std::unordered_map <std::string, Factory> factories;
+    std::unordered_map <std::string, Factory*> my_factories, his_factories;
     std::unordered_map <std::string, Unit> units;
+    std::unordered_map <std::string, Unit*> my_units, his_units;
 
     int real_step, step, factories_per_team;
     vvi ice, ore, rubble, lichen, lichen_strains;

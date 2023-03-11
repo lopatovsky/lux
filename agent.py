@@ -22,7 +22,6 @@ def AdjToFactory(x, y, i, j):
     if dist_x == 2 or dist_y == 2: return True
     return False
 
-
 class Agent:
     def __init__(self, ppo_model, state: GameState) -> None:
         np.random.seed(0)
@@ -114,7 +113,6 @@ class Agent:
 
     def move_dist(self, x, y):
         """Move directions: [0, 0], [0, -1], [1, 0], [0, 1], [-1, 0]"""
-
         actions = []
         sub_moves = []
         if x > 0:
@@ -140,6 +138,9 @@ class Agent:
         return actions
 
     def move_from_to(self, x, y):
+
+        #return self.state.clux.shortest_path(x[0], x[1], y[0], y[1], False)
+
         return self.move_dist(x[0] - y[0], x[1] - y[1])
 
     def dig_action(self, n):

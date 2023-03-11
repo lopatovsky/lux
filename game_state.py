@@ -335,4 +335,5 @@ class GameState:
             self.clux.update_factory( f.unit_id, f.strain_id, f.is_my,
                                       f.power, f.pos[0], f.pos[1], f.cargo)
 
+        # Called last.
         self.clux.update_assorted( self.real_step, self.step)
