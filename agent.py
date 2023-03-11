@@ -379,6 +379,8 @@ class Agent:
     def rule_based_actions(self):
         lux_action = dict()
 
+        clux = self.state.clux
+
         units = self.state.units
         factories = self.state.factories
 
@@ -395,10 +397,10 @@ class Agent:
                 if unit.unit_type == 'HEAVY':
                     lux_action[unit_id] = self.mine_ice_action(unit)
                 else:
-                    # TODO query home factory
                     #if np.random.rand() < 1.2:
-                    lux_action[unit_id] = self.remove_rubble_action(unit)
+                    lux_action[unit_id] = clux.remove_rubble_action(unit_id)
                     #else: lux_action[unit_id] = self.mine_ore_action(unit)
+                    # .. TODO many other actions
 
         # Collisions
         for unit_id in units.keys():

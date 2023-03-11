@@ -47,6 +47,10 @@ int distance(int x0, int y0, int x1, int y1){
     return abs(x0 - x1) + abs(y0 - y1);
 }
 
+bool is_in_factory( ii factory, ii pos){
+    return max(abs(factory.xx - pos.xx) , abs(factory.yy - pos.yy)) <= 1;
+}
+
 vii code_to_direction = {{0, 0}, {0, -1}, {1, 0}, {0, 1}, {-1, 0}};
 
 vvi board(){
@@ -121,6 +125,7 @@ public:
        power = pow;
        px = x;
        py = y;
+       pos = {x,y};
        cargo = c;
     }
 
@@ -130,6 +135,7 @@ public:
     int power;
     int px;
     int py;
+    ii pos;
     // 'ice', 'ore', 'water', 'metal'
     std::unordered_map<std::string, int> cargo;
 };
@@ -149,7 +155,7 @@ public:
     Action(int type_, int dir_code_, int resource_, int amount_, int repeat_, int n_): type(type_), dir_code(dir_code_),
                                 resource(resource_), amount(amount_), repeat(repeat_), n(n_){}
 
-    py::array_t<int> to_raw_action(){
+    py::array_t<int> to_raw_action() const{
         py::array_t<int> result({6});
         int* data = result.mutable_data();
         data[0] = type;
@@ -168,25 +174,45 @@ Action move_action(int dir_code, int n, int repeat = 0){
     return Action(0, dir_code, 0, 0, repeat, n);
 }
 
+Action dig_action(int n){
+    return Action(3, 0, 0, 0, 0, n);
+}
+
+Action recharge_action(int till_capacity){
+    return Action(5, 0, 0, till_capacity, 0, 1);
+}
+
+Action pick_up_action(int resource_code, int pick_up_amount){
+    return Action(2, 0, resource_code, pick_up_amount, 0, 1);
+}
+
+Action transfer_action(int resource_code){
+    int transfer_dir = 0;
+    return Action(1, transfer_dir, resource_code, 3000, 0, 1);
+}
+
+
 class Unit {
 public:
     void update(std::string u, bool h, bool my, int pow, int x, int y,
                 std::unordered_map<std::string, int> c, std::vector<py::array_t<int>> aq){
        unit_id = u;
-       heavy = h;
+       is_heavy = h;
        is_my = my;
        power = pow;
        px = x;
        py = y;
+       pos = {x,y};
        cargo = c;
     }
 
     std::string unit_id;
     bool is_my;
-    bool heavy;  // false is light unit
+    bool is_heavy;  // false is light unit
     int power;
     int px;
     int py;
+    ii pos;
     std::unordered_map<std::string, int> cargo;
     std::vector<Action> action_queue;
 };
@@ -257,6 +283,12 @@ void print_board(const vector<vector<float>>& double_vec){
     print_board(int_vec);
 }
 
+std::vector<py::array_t<int>> get_raw_actions(const vector<Action> & actions){
+        std::vector<py::array_t<int>> raw_actions(actions.size());
+        REP(i,actions.size()) raw_actions[i] = actions[i].to_raw_action();
+        return raw_actions;
+    }
+
 int closest_factory(int i, int j, const std::unordered_map <std::string, Factory>& factories){
     int closest_factory = 100;
 
@@ -265,6 +297,20 @@ int closest_factory(int i, int j, const std::unordered_map <std::string, Factory
     }
     return closest_factory;
 }
+
+Factory * get_closest_factory(int i, int j, std::unordered_map <std::string, Factory*>& factories){
+    int min_dist = 100;
+    Factory * factory;
+    for(auto& f: factories){
+        int dist = distance(f.ss->px, f.ss->py, i, j);
+        if (dist < min_dist){
+            min_dist = dist;
+            factory = f.ss;
+        }
+    }
+    return factory;
+}
+
 
 vvi get_rubble_around_factory_map(vvi rubble){
     auto acc_map = board(0);
@@ -338,16 +384,16 @@ public:
 
         my_factories.clear();
         his_factories.clear();
-        for(auto it: factories) {
-            if (it.ss.is_my) my_factories[it.ff] = &it.ss;
-            else his_factories[it.ff] = &it.ss;
+        for(auto& [key, value] : factories) {
+            if (value.is_my) my_factories.emplace( key, &value);
+            else his_factories.emplace( key, &value);
         }
 
         my_units.clear();
         his_units.clear();
-        for(auto it: units) {
-            if (it.ss.is_my) my_units[it.ff] = &it.ss;
-            else his_units[it.ff] = &it.ss;
+        for(auto& [key, value] : units) {
+            if (value.is_my) my_units[key] = &value;
+            else his_units[key] = &value;
         }
 
         // invalidate move to opponents factories
@@ -447,7 +493,7 @@ public:
     }
 
     // Optimize on energy and turns
-    std::vector<py::array_t<int>> shortest_path(int x0, int y0, int x1, int y1, bool is_heavy){
+    std::pair<int, vector<Action>> shortest_path(int t, int x0, int y0, int x1, int y1, bool is_heavy){
         // int step = TODO for energy
 
         // TODO for hypercorrect ..should be triple< energy, len, turns. maybe shorter path exists with more turns.
@@ -514,6 +560,13 @@ public:
         }
         reverse(path.begin(), path.end());
 
+        // subtract energy gains if it is day.
+        int daily_gain = is_heavy ? 10:1;
+        int t0 = t;
+        REP(i,path.size()){
+            energy -= is_day(t0++) ? daily_gain: 0;
+        }
+
         vector<Action> actions;
         int start_segment = 0;
         path.PB(0);  // padding for last segment
@@ -526,10 +579,93 @@ public:
           }
         }
 
-        std::vector<py::array_t<int>> raw_actions(actions.size());
-        REP(i,actions.size()) raw_actions[i] = actions[i].to_raw_action();
+        return {energy, actions};
+    }
 
-        return raw_actions;
+    ii find_rubble(int px, int py){
+        return MP(0,0);
+    }
+
+    vector<Action> prepare_unit(const Unit& unit){
+        vector<Action> actions;
+        if (unit.cargo.at("ore") > 0){
+            actions.PB(transfer_action(1));
+        }
+        if (unit.cargo.at("ice") > 0){
+            actions.PB(transfer_action(0));
+        }
+        if (unit.is_heavy && unit.power < 2500){
+            actions.PB(pick_up_action(4, 2950 - unit.power));
+        }else if(!unit.is_heavy && unit.power < 140){
+            actions.PB(pick_up_action(4, 150 - unit.power));
+        }
+        return actions;
+    }
+
+    std::vector<py::array_t<int>> mine_resource_action(string key_id, int resource_id){
+
+
+    }
+
+    std::vector<py::array_t<int>> mine_ore_action(string key_id){
+        return mine_resource_action(unit, 1)
+    }
+
+    std::vector<py::array_t<int>> mine_ice_action(string key_id){
+        return mine_resource_action(unit, 0)
+    }
+
+
+    std::vector<py::array_t<int>> remove_rubble_action(string key_id){
+        // TODO store objective or something
+        auto& unit = units[key_id];
+        auto* mother = get_closest_factory( unit.px, unit.py, my_factories);
+
+        //# PREPARE ACTION
+        if (is_in_factory(mother->pos, unit.pos)){
+            auto prepare_actions = prepare_unit(unit);
+            if (!prepare_actions.empty()){
+                cerr << unit.unit_id << " is gonna be prepared!" << endl;
+                return get_raw_actions(prepare_actions);
+            }
+        }
+
+        auto [path_power, path_actions] = shortest_path( step, unit.px, unit.py, mother->px, mother->py, unit.is_heavy);
+
+        //# GO HOME ACTION
+        int energy_treshold = unit.is_heavy? 240 : 20;  // energy of four digs.
+        if( unit.power < path_power + energy_treshold){
+            cerr << unit.unit_id << " no rubble go home!" << endl;
+            return get_raw_actions(path_actions);
+        }
+
+        ii rubble_loc = find_rubble(unit.px, unit.py);
+        auto [rubble_power, rubble_path_actions] =
+                     shortest_path( step, unit.px, unit.py, rubble_loc.xx, rubble_loc.yy, unit.is_heavy);
+
+        auto [worst_case_home_power, home_actions] =
+                     shortest_path( 30 /*worst_case*/, rubble_loc.xx, rubble_loc.yy, mother->px, mother->py, unit.is_heavy);
+        int rest_power = path_power + worst_case_home_power;
+
+        int dig_number = rest_power / (unit.is_heavy ? 60 : 5);
+
+        //# GO HOME ACTION
+        if(dig_number < 1){
+            cerr << unit.unit_id << " no rubble go home!" << endl;
+            return get_raw_actions(path_actions);
+        }
+
+        int max_digs = unit.is_heavy ? (rubble[rubble_loc.xx][rubble_loc.yy]+19)/ 20:
+                                       (rubble[rubble_loc.xx][rubble_loc.yy]+1 )/  2;
+        dig_number = min(dig_number, max_digs);
+
+        //# GO DIG ACTION
+        if (dig_number){
+            cerr << unit.unit_id << " Digging " << dig_number << " rubble!" << endl;
+            rubble_path_actions.PB(dig_action(dig_number));
+        }else cerr << unit.unit_id << " well this is strange, I want to dig, but there is no rubble!" << endl;
+
+        return get_raw_actions(rubble_path_actions);
     }
 
     int factory_placement_value(int i, int j){
@@ -600,5 +736,10 @@ PYBIND11_MODULE(clux, m) {
         .def("update_assorted", &CLux::update_assorted)
 
         .def("place_factory", &CLux::place_factory)
+
+        .def("remove_rubble_action", &CLux::remove_rubble_action)
+        .def("mine_ice_action", &CLux::mine_ice_action)
+        .def("mine_ice_action", &CLux::mine_ore_action)
+
         .def("shortest_path", &CLux::shortest_path);
 }
