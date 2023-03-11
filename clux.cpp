@@ -342,8 +342,15 @@ public:
             if (it.ss.is_my) my_factories[it.ff] = &it.ss;
             else his_factories[it.ff] = &it.ss;
         }
-        // TODO: same for units.
 
+        my_units.clear();
+        his_units.clear();
+        for(auto it: units) {
+            if (it.ss.is_my) my_units[it.ff] = &it.ss;
+            else his_units[it.ff] = &it.ss;
+        }
+
+        // invalidate move to opponents factories
         for(auto it: his_factories){
             for(const auto& [x, y]: iterate_mask({it.ss->px, it.ss->py}, factory_mask)){
                 if(valid(x, y)) rubble[x][y] = 1e6;
