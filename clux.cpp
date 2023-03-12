@@ -139,6 +139,7 @@ public:
     // 'ice', 'ore', 'water', 'metal'
     std::unordered_map<std::string, int> cargo;
     vector<pair<int,ii>> rubble_vec;
+    vector<pair<ii,ii>> lichen_vec;
 };
 
 class Action {
@@ -414,7 +415,7 @@ public:
         assigned_rubbles = board(-1e6);
 
         auto economy_zone = board(-1);
-        auto distance = board(1e6);
+        auto distance_map = board(1e6);
         queue<ii> q;
         queue<int> q_dist;
 
@@ -423,6 +424,7 @@ public:
         for(auto& f : factories){
             factory_strain[f.ss.strain_id] = &f.ss;
             f.ss.rubble_vec.clear();
+            f.ss.lichen_vec.clear();
             for(const auto& [x, y]: iterate_mask(f.ss.pos, factory_mask)){
                 q.push({x,y});
                 q_dist.push(0);
@@ -449,7 +451,7 @@ public:
                 int ny = y + code_to_direction[code].yy;
                 if (valid(nx,ny) && economy_zone[nx][ny] == -1){
                     economy_zone[nx][ny] = ez;
-                    distance[nx][ny] = dist;
+                    distance_map[nx][ny] = dist;
                     q.push({nx,ny});
                     q_dist.push(dist+1);
                 }
@@ -458,7 +460,21 @@ public:
 
         REP(i,N)REP(j,N)
             if(rubble[i][j] && economy_zone[i][j] >= 0){
-                factory_strain[economy_zone[i][j]]->rubble_vec.PB(MP(distance[i][j],MP(i,j)));
+                factory_strain[economy_zone[i][j]]->rubble_vec.PB(MP(distance_map[i][j],MP(i,j)));
+            }
+
+        // FOR LICHEN MINING:
+
+        REP(i,N) REP(j,N)
+            if(lichen_strains[i][j] >= 0 && !factory_strain[lichen_strains[i][j]]->is_my){
+                Factory * lichen_fac = factory_strain[lichen_strains[i][j]];
+                int dist = distance( i,j, lichen_fac->px, lichen_fac->py);
+
+                for(auto &factory: my_factories){
+                    int my_dist = distance( i,j, factory.ss->px, factory.ss->py);
+                    factory.ss->lichen_vec.PB(MP(MP(dist, my_dist), MP(i, j)));
+                }
+
             }
     }
 
@@ -733,7 +749,6 @@ public:
         if (is_in_factory(mother->pos, unit.pos)){
             auto prepare_actions = prepare_unit(unit, mother);
             if (!prepare_actions.empty()){
-                cerr << unit.unit_id << " is gonna be prepared!" << endl;
                 return get_raw_actions(prepare_actions);
             }
         }
@@ -743,7 +758,6 @@ public:
         //# GO HOME ACTION
         int energy_treshold = unit.is_heavy? 240 : 20;  // energy of four digs.
         if( unit.power < path_power + energy_treshold){
-            cerr << unit.unit_id << " no energy, go home!" << endl;
             return get_raw_actions(path_actions);
         }
 
@@ -761,7 +775,6 @@ public:
 
         //# GO HOME ACTION
         if(dig_number < 1){
-            cerr << unit.unit_id << " no energy to mine, go home!" << endl;
             return get_raw_actions(path_actions);
         }
 
@@ -778,14 +791,10 @@ public:
 
         //# GO DIG ACTION
         if (dig_number){
-            cerr << unit.unit_id << " Digging " << dig_number << " resource!" << endl;
             resource_path_actions.PB(dig_action(dig_number));
-        }else cerr << unit.unit_id << " I want to dig, but no more cargo space!" << endl;
+        }
 
         return get_raw_actions(resource_path_actions);
-
-
-
     }
 
     std::vector<py::array_t<int>> mine_ore_action(string key_id){
@@ -799,7 +808,6 @@ public:
     ii assign_rubble( Factory * factory, int px, int py){
         int best_x = 0, best_y = 0, best_score = 1e9;
 
-        // TODO some placeholder for already selected ?
         for (auto& [dist, loc]: factory->rubble_vec){
             int last_access = assigned_rubbles[loc.xx][loc.yy];
             if (step - last_access < 50) continue;
@@ -822,7 +830,49 @@ public:
         // cerr << "For: " << px << ", " << py << "Assign rubble: " << best_x << ", " << best_y << endl;
 
         assigned_rubbles[best_x][best_y] = step;
+        return {best_x, best_y};
+    }
 
+    ii assign_lichen( Factory * factory, int px, int py, bool is_inner){
+        int best_x = 0, best_y = 0, best_score = 1e9;
+
+        // Outer lichen eater params. Bigger means more important.
+        int DH = 0;   // Distance to his factory
+        int DM = 4;  // Distance to my factory
+        int L = 1;   // Lichen value
+        int U = 2;   // Distance to unit
+
+        // Inner lichen eater params.
+        if(is_inner){
+            DH = 100;
+            DM = 1;
+            L = 0;
+            U = 1;
+        }
+
+        for (auto& [distances, loc]: factory->lichen_vec){
+            int last_access = assigned_rubbles[loc.xx][loc.yy];
+            if (step - last_access < 50) continue;
+
+            auto& [distance_to_him, distance_to_me] = distances; // Distances to factories.
+
+            int lichen_value = lichen[loc.xx][loc.yy];
+            int dist_from_unit = distance(px, py, loc.xx, loc.yy);
+
+            int score = DH * distance_to_him +
+                        DM * distance_to_me +
+                        L *  lichen_value +
+                        U * dist_from_unit;
+
+            if (score < best_score){
+                best_score = score;
+                best_x = loc.xx;
+                best_y = loc.yy;
+            }
+        }
+        // cerr << "For: " << px << ", " << py << "Assign rubble: " << best_x << ", " << best_y << endl;
+
+        assigned_rubbles[best_x][best_y] = step;
         return {best_x, best_y};
     }
 
@@ -835,7 +885,6 @@ public:
         if (is_in_factory(mother->pos, unit.pos)){
             auto prepare_actions = prepare_unit(unit, mother);
             if (!prepare_actions.empty()){
-                cerr << unit.unit_id << " is gonna be prepared!" << endl;
                 return get_raw_actions(prepare_actions);
             }
         }
@@ -845,7 +894,6 @@ public:
         //# GO HOME ACTION
         int energy_treshold = unit.is_heavy? 240 : 20;  // energy of four digs.
         if( unit.power < path_power + energy_treshold){
-            cerr << unit.unit_id << " no energy go home!" << endl;
             return get_raw_actions(path_actions);
         }
 
@@ -864,7 +912,6 @@ public:
 
         //# GO HOME ACTION
         if(dig_number < 1){
-            cerr << unit.unit_id << " no energy to dig go home!" << endl;
             return get_raw_actions(path_actions);
         }
 
@@ -874,15 +921,68 @@ public:
 
         //# GO DIG ACTION
         if (dig_number){
-            cerr << unit.unit_id << " Digging " << dig_number << " rubble! at: " << rx << ", " << ry << endl;
             rubble_path_actions.PB(dig_action(dig_number));
-        }else cerr << unit.unit_id << " well this is strange, I want to dig, but there is no rubble!" << endl;
+        }
 
         return get_raw_actions(rubble_path_actions);
     }
 
     std::vector<py::array_t<int>> remove_lichen_action(const string& key_id, bool is_inner){
-        std::vector<py::array_t<int>> v; return v;
+
+        auto& unit = units[key_id];
+        auto* mother = my_factories[unit.mother_ship_id]; //get_closest_factory( unit.px, unit.py, my_factories);
+
+        // LICHEN specific
+        if (mother->lichen_vec.empty()){
+            return remove_rubble_action(key_id);
+        }
+
+        //# PREPARE ACTION
+        if (is_in_factory(mother->pos, unit.pos)){
+            auto prepare_actions = prepare_unit(unit, mother);
+            if (!prepare_actions.empty()){
+                return get_raw_actions(prepare_actions);
+            }
+        }
+
+        auto [path_power, path_actions] = shortest_path( step, unit.px, unit.py, mother->px, mother->py, unit.is_heavy);
+
+        //# GO HOME ACTION
+        int energy_treshold = unit.is_heavy? 240 : 20;  // energy of four digs.
+        if( unit.power < path_power + energy_treshold){
+            return get_raw_actions(path_actions);
+        }
+
+        // LICHEN specific
+        const auto [rx, ry] = assign_lichen(mother, unit.px, unit.py, is_inner);
+
+
+        auto [rubble_power, rubble_path_actions] =
+                     shortest_path( step, unit.px, unit.py, rx, ry, unit.is_heavy);
+
+        auto [worst_case_home_power, home_actions] =
+                     shortest_path( 30 /*worst_case*/, rx, ry, mother->px, mother->py, unit.is_heavy);
+        int rest_power = unit.power - (path_power + worst_case_home_power);
+
+        int dig_number = rest_power / (unit.is_heavy ? 50 : 5); // 60 -> 50 because unit gets some energy from sun.
+
+        //# GO HOME ACTION
+        if(dig_number < 1){
+            return get_raw_actions(path_actions);
+        }
+
+        // LICHEN specific
+        int max_digs = unit.is_heavy ? 1:
+                                       (rubble[rx][ry]+9 )/  10 + 2;  // +2, because it may regrow till I come there.
+
+        dig_number = min(dig_number, max_digs);
+
+        //# GO DIG ACTION
+        if (dig_number){
+            rubble_path_actions.PB(dig_action(dig_number));
+        }
+
+        return get_raw_actions(rubble_path_actions);
     }
 
     std::vector<py::array_t<int>> distract_oponent_action(const string& key_id){

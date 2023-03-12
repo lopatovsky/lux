@@ -398,7 +398,7 @@ class Agent:
                         unit.occupation = 'ICE_MINER'
                     elif unit.unit_type == 'HEAVY':
                         unit.occupation = 'NERVER'
-                    elif he_has_lichen:  # LIGHT
+                    elif not he_has_lichen:  # LIGHT
                         if np_rand < 0.6:
                             unit.occupation = 'RUBBLE_EATER'
                         elif np_rand < 0.8:
@@ -411,16 +411,19 @@ class Agent:
                         else:
                             unit.occupation = "OUTER_LICHEN_EATER"
 
-
                 if he_has_lichen and has_lichen and unit.occupation == 'ORE_MINER':
                     unit.occupation = 'INNER_LICHEN_EATER'
-                if he_has_lichen and has_lichen and unit.occupation == 'RUBBLE_EATER' and np_rand < 0.1:
+                if he_has_lichen and has_lichen and unit.occupation == 'RUBBLE_EATER' and np_rand < 0.01:
                     unit.occupation = 'OUTER_LICHEN_EATER'
 
                 if self.state.step > 990 and (unit.occupation == 'NERVER' or unit.occupation == 'INNER_LICHEN_EATER'):
                     unit.occupation = 'HARAKIRI_SAMURAI'
 
-                print(self.state.step, " - Occ: ", unit.occupation, file=sys.stderr)
+                # TODO implement these:
+                # so far inner lichen eater seem has a little value , but if big is there it would have.
+                if unit.occupation == 'HARAKIRI_SAMURAI' or unit.occupation == 'NERVER':
+                    unit.occupation = 'OUTER_LICHEN_EATER'
+
 
                 if unit.occupation == "ICE_MINER":
                     lux_action[unit_id] = self.mine_ice_action(unit)  # clux.mine_ice_action(unit_id)
@@ -436,6 +439,15 @@ class Agent:
                     lux_action[unit_id] = clux.distract_oponent_action(unit_id, False)
                 elif unit.occupation == "HARAKIRI_SAMURAI":
                     lux_action[unit_id] = clux.suicide_action(unit_id, False)
+
+        occ_counts = {}
+        for unit in units.values():
+            if unit.occupation in occ_counts:
+                occ_counts[unit.occupation] +=1
+            else:
+                occ_counts[unit.occupation] = 0
+
+        print(occ_counts, file=sys.stderr)
 
         # Collisions
         for unit_id in units.keys():

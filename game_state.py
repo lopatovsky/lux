@@ -204,7 +204,7 @@ class GameState:
 
     def update_has_lichen(self):
         is_my_strain = {}
-        for factory in self.his_factories.values():
+        for factory in self.factories.values():
             is_my_strain[factory.strain_id] = True
         for factory in self.his_factories.values():
             is_my_strain[factory.strain_id] = False
