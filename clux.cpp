@@ -819,14 +819,14 @@ public:
                 best_y = loc.yy;
             }
         }
-        cerr << "For: " << px << ", " << py << "Assign rubble: " << best_x << ", " << best_y << endl;
+        // cerr << "For: " << px << ", " << py << "Assign rubble: " << best_x << ", " << best_y << endl;
 
         assigned_rubbles[best_x][best_y] = step;
 
         return {best_x, best_y};
     }
 
-    std::vector<py::array_t<int>> remove_rubble_action(string key_id){
+    std::vector<py::array_t<int>> remove_rubble_action(const string& key_id){
 
         auto& unit = units[key_id];
         auto* mother = my_factories[unit.mother_ship_id]; //get_closest_factory( unit.px, unit.py, my_factories);
@@ -879,6 +879,18 @@ public:
         }else cerr << unit.unit_id << " well this is strange, I want to dig, but there is no rubble!" << endl;
 
         return get_raw_actions(rubble_path_actions);
+    }
+
+    std::vector<py::array_t<int>> remove_lichen_action(const string& key_id, bool is_inner){
+        std::vector<py::array_t<int>> v; return v;
+    }
+
+    std::vector<py::array_t<int>> distract_oponent_action(const string& key_id){
+        std::vector<py::array_t<int>> v; return v;
+    }
+
+    std::vector<py::array_t<int>> suicide_action(const string& key_id){
+        std::vector<py::array_t<int>> v; return v;
     }
 
     int factory_placement_value(int i, int j){
@@ -953,6 +965,7 @@ PYBIND11_MODULE(clux, m) {
         .def("remove_rubble_action", &CLux::remove_rubble_action)
         .def("mine_ice_action", &CLux::mine_ice_action)
         .def("mine_ore_action", &CLux::mine_ore_action)
-
-        .def("shortest_path", &CLux::shortest_path);
+        .def("remove_lichen_action", &CLux::remove_lichen_action)
+        .def("distract_oponent_action", &CLux::distract_oponent_action)
+        .def("suicide_action", &CLux::suicide_action);
 }

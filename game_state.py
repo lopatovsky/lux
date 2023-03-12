@@ -292,7 +292,6 @@ class GameState:
                 self.valid_spawns_mask = np.array(self.board["valid_spawns_mask"])
 
         if self.step == 0:
-            self.divide_and_conquer_rubble()
             self.factory_loc_dict = dict()
             self.build_no_go_map()
             for factory in self.factories.values():
