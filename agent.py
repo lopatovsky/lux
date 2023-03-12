@@ -366,6 +366,7 @@ class Agent:
         else:
             return [np.array([0, safe_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
 
+    redo_cnt = 0
 
     # TODO move this to controller?
     def rule_based_actions(self):
@@ -390,10 +391,11 @@ class Agent:
 
             if len(unit.action_queue) == 0:
 
+                self.redo_cnt +=1
+                print( "redo: ", self.redo_cnt , file=sys.stderr)
+
                 # TODO orchestration by ML oracle.
                 np_rand = np.random.rand()
-
-                print(self.state.step,"bug", he_has_lichen, has_lichen, (not he_has_lichen) and (not has_lichen), file=sys.stderr)
 
                 if unit.occupation == "NONE":
                     if unit.unit_type == 'HEAVY' and self.state.step < 10:
