@@ -398,7 +398,7 @@ class Agent:
                         unit.occupation = 'ICE_MINER'
                     elif unit.unit_type == 'HEAVY':
                         unit.occupation = 'NERVER'
-                    elif not he_has_lichen:  # LIGHT
+                    elif not he_has_lichen and not has_lichen:  # LIGHT
                         if np_rand < 0.6:
                             unit.occupation = 'RUBBLE_EATER'
                         elif np_rand < 0.8:
