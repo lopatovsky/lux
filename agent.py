@@ -485,9 +485,6 @@ class Agent:
             if factory.cargo["water"] > K *(1000 - self.state.step) + 20:
                 lux_action[factory_id] = 2  # water and grow lichen at the end of the game
 
-            if self.state.me == "player_1":
-                lux_action[factory_id] = 2
-
         return lux_action
 
     def step(self):
