@@ -393,23 +393,26 @@ class Agent:
                 # TODO orchestration by ML oracle.
                 np_rand = np.random.rand()
 
+                print(self.state.step,"bug", he_has_lichen, has_lichen, (not he_has_lichen) and (not has_lichen), file=sys.stderr)
+
                 if unit.occupation == "NONE":
                     if unit.unit_type == 'HEAVY' and self.state.step < 10:
                         unit.occupation = 'ICE_MINER'
                     elif unit.unit_type == 'HEAVY':
                         unit.occupation = 'NERVER'
-                    elif not he_has_lichen and not has_lichen:  # LIGHT
+                    elif he_has_lichen and has_lichen:  # LIGHT
+                        if np_rand < 0.5:
+                            unit.occupation = "INNER_LICHEN_EATER"
+                        else:
+                            unit.occupation = "OUTER_LICHEN_EATER"
+                    else:
                         if np_rand < 0.6:
                             unit.occupation = 'RUBBLE_EATER'
                         elif np_rand < 0.8:
                             unit.occupation = 'ORE_MINER'
                         else:
                             unit.occupation = 'NERVER'
-                    else:
-                        if np_rand < 0.5:
-                            unit.occupation = "INNER_LICHEN_EATER"
-                        else:
-                            unit.occupation = "OUTER_LICHEN_EATER"
+
 
                 if he_has_lichen and has_lichen and unit.occupation == 'ORE_MINER':
                     unit.occupation = 'INNER_LICHEN_EATER'
@@ -481,6 +484,9 @@ class Agent:
             K = 6
             if factory.cargo["water"] > K *(1000 - self.state.step) + 20:
                 lux_action[factory_id] = 2  # water and grow lichen at the end of the game
+
+            if self.state.me == "player_1":
+                lux_action[factory_id] = 2
 
         return lux_action
 
