@@ -209,17 +209,14 @@ class Agent:
 
 
     def mine_ore_action(self, unit):
-        unit.occupation = "ORE"
         return self.mine_resource_action(unit, self.state.ore_distance, 1)
         #rand_num = np.random.randint(low=1, high=5)
 
     def mine_ice_action(self, unit):
-        unit.occupation = "ICE"
         return self.mine_resource_action(unit, self.state.ice_distance, 0)
         #rand_num = np.random.randint(low=1, high=5)
 
     def remove_rubble_action(self, unit):
-        unit.occupation = "RUBBLE"
         actions = []
 
         target_pos, total_dist , rubble_value = unit.mother_ship.next_rubble()
@@ -389,13 +386,63 @@ class Agent:
             unit = units[unit_id]
 
             if len(unit.action_queue) == 0:
+
+                # TODO orchestration by ML oracle.
+                np_rand = np.random.rand()
+
+                if unit.occupation == "NONE":
+                    if unit.unit_type == 'HEAVY' and self.step < 10:
+                        unit.occupation = 'ICE_MINER'
+                    elif unit.unit_type == 'HEAVY':
+                        unit.occupation = 'NERVER'
+                    elif he_has_lichen:  # LIGHT
+                        if np_rand < 0.6:
+                            unit.occupation = 'RUBBLE_EATER'
+                        elif np_rand < 0.8:
+                            unit.occupation = 'ORE_MINER'
+                        else:
+                            unit.occupation = 'NERVER'
+                    else:
+                        if np_rand < 0.5:
+                            unit.occupation = "INNER_LICHEN_EATER"
+                        else:
+                            unit.occupation = "OUTER_LICHEN_EATER"
+
+                if (he_has_lichen or has_lichen) and unit.occupation == 'ORE_MINER':
+                    unit.occupation = 'INNER_LICHEN_EATER'
+                if he_has_lichen and unit.occupation == 'RUBBLE_EATER' and np_rand < 0.005:
+                    unit.occupation = 'OUTER_LICHEN_EATER'
+
+                if self.step > 990 and (unit.occupation == 'NERVER' or unit.occupation == 'INNER_LICHEN_EATER'):
+                    unit.occupation = 'HARAKIRI_SAMURAI'
+
+
+                if unit.occupation == "ICE_MINER":
+                    lux_action[unit_id] = self.mine_ice_action(unit)  # clux.mine_ice_action(unit_id)
+                elif unit.occupation == "ORE_MINER":
+                    lux_action[unit_id] = clux.mine_ore_action(unit_id)
+                elif unit.occupation == "RUBBLE_EATER":
+                    lux_action[unit_id] = clux.remove_rubble_action(unit_id)
+                elif unit.occupation == "INNER_LICHEN_EATER":
+                    lux_action[unit_id] = clux.remove_lichen_action(unit_id, True)
+                elif unit.occupation == "OUTER_LICHEN_EATER":
+                    lux_action[unit_id] = clux.remove_lichen_action(unit_id, False)
+                elif unit.occupation == "NERVER":  # pro-fighter
+                    lux_action[unit_id] = clux.distract_oponent_action(unit_id, False)
+                elif unit.occupation == "HARAKIRI_SAMURAI":
+                    lux_action[unit_id] = clux.suicide_action(unit_id, False)
+
                 if unit.unit_type == 'HEAVY':
+                    unit.occupation = "ICE_MINER";
                     lux_action[unit_id] = self.mine_ice_action(unit) # clux.mine_ice_action(unit_id)
                 else:
                     if np.random.rand() < 0.8 or self.state.step > 700:
+                        unit.occupation = "RUBBLE_EATER"
                         (rx, ry), _ , _ = unit.mother_ship.next_rubble()
                         lux_action[unit_id] = clux.remove_rubble_action(unit_id)
-                    else: lux_action[unit_id] = clux.mine_ore_action(unit_id)
+                    else:
+                        unit.occupation = "ORE_MINER"
+                        lux_action[unit_id] = clux.mine_ore_action(unit_id)
                     # .. TODO many other actions
 
         # Collisions

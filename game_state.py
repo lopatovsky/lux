@@ -14,7 +14,7 @@ class Unit:
         self.is_my = is_my
         # mother factory location
         if self.is_my:
-            self.occupation = "NO"
+            self.occupation = "NONE"
             self.is_baby = True
             self.init_pos = self.pos
             self.mother_ship = factory_loc_dict[self.init_pos[0], self.init_pos[1]]
