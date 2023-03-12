@@ -829,6 +829,15 @@ public:
         }
         // cerr << "For: " << px << ", " << py << "Assign rubble: " << best_x << ", " << best_y << endl;
 
+        // Fallback for empty queue.
+        if (best_score == 1e9){
+            for( auto& other_factory: my_factories){
+                if (other_factory.ss->unit_id != factory->unit_id && !other_factory.ss->rubble_vec.empty()){
+                    return assign_rubble( other_factory.ss, px, py);
+                }
+            }
+        }
+
         assigned_rubbles[best_x][best_y] = step;
         return {best_x, best_y};
     }
@@ -838,9 +847,9 @@ public:
 
         // Outer lichen eater params. Bigger means more important.
         int DH = 0;   // Distance to his factory
-        int DM = 4;  // Distance to my factory
+        int DM = 30;  // Distance to my factory
         int L = 1;   // Lichen value
-        int U = 2;   // Distance to unit
+        int U = 30;   // Distance to unit
 
         // Inner lichen eater params.
         if(is_inner){
