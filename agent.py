@@ -381,6 +381,9 @@ class Agent:
                 # sets action queue to empty so it is later pick-ed up as idle and get more meaningful activity.
                 units[unit_id].action_queue = []
 
+        has_lichen = self.state.has_lichen
+        he_has_lichen = self.state.he_has_lichen
+
 
         for unit_id in units.keys():
             unit = units[unit_id]
@@ -395,7 +398,7 @@ class Agent:
                         unit.occupation = 'ICE_MINER'
                     elif unit.unit_type == 'HEAVY':
                         unit.occupation = 'NERVER'
-                    elif he_has_lichen:  # LIGHT
+                    elif self.he_has_lichen:  # LIGHT
                         if np_rand < 0.6:
                             unit.occupation = 'RUBBLE_EATER'
                         elif np_rand < 0.8:
@@ -408,9 +411,9 @@ class Agent:
                         else:
                             unit.occupation = "OUTER_LICHEN_EATER"
 
-                if (he_has_lichen or has_lichen) and unit.occupation == 'ORE_MINER':
+                if he_has_lichen and has_lichen and unit.occupation == 'ORE_MINER':
                     unit.occupation = 'INNER_LICHEN_EATER'
-                if he_has_lichen and unit.occupation == 'RUBBLE_EATER' and np_rand < 0.005:
+                if he_has_lichen and has_lichen and unit.occupation == 'RUBBLE_EATER' and np_rand < 0.1:
                     unit.occupation = 'OUTER_LICHEN_EATER'
 
                 if self.step > 990 and (unit.occupation == 'NERVER' or unit.occupation == 'INNER_LICHEN_EATER'):
@@ -431,19 +434,6 @@ class Agent:
                     lux_action[unit_id] = clux.distract_oponent_action(unit_id, False)
                 elif unit.occupation == "HARAKIRI_SAMURAI":
                     lux_action[unit_id] = clux.suicide_action(unit_id, False)
-
-                if unit.unit_type == 'HEAVY':
-                    unit.occupation = "ICE_MINER";
-                    lux_action[unit_id] = self.mine_ice_action(unit) # clux.mine_ice_action(unit_id)
-                else:
-                    if np.random.rand() < 0.8 or self.state.step > 700:
-                        unit.occupation = "RUBBLE_EATER"
-                        (rx, ry), _ , _ = unit.mother_ship.next_rubble()
-                        lux_action[unit_id] = clux.remove_rubble_action(unit_id)
-                    else:
-                        unit.occupation = "ORE_MINER"
-                        lux_action[unit_id] = clux.mine_ore_action(unit_id)
-                    # .. TODO many other actions
 
         # Collisions
         for unit_id in units.keys():

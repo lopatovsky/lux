@@ -55,33 +55,8 @@ class Factory:
             kid.mother_ship = step_mother
             step_mother.kids.append(kid)
             kid.init_pos = step_mother.pos  # Brainwashing :)
-            kid.occupation = "NO"
+            kid.occupation = "NERVER"
 
-    def sort_rubble_queue(self):
-        """sort function: dist * K + rubble_value"""
-        K = 4
-        self.rubble_queue.sort(key=lambda triple: triple[1] * K + triple[2])
-
-    def next_rubble(self):
-        # move head to the start of the queue so some unconsumed rubble can be consumed.
-        if self.time - self.last_queue_shuffle > 40:
-            self.last_queue_shuffle = self.time
-            self.rubble_queue_head = 0
-
-        while(True):
-            if self.rubble_queue_head >= len(self.rubble_queue):
-                return ((np.random.randint(low=10, high=40), np.random.randint(low=10, high=40)),0,1)
-            rubble = self.rubble_queue[self.rubble_queue_head]
-            if self.state.rubble[rubble[0]] > 0:
-                self.consume_rubble()
-                return rubble[0], rubble[1], self.state.rubble[rubble[0]]  # always returns current rubble state
-            # skip rubble-less tile
-            self.rubble_queue_head+=1
-
-
-
-    def consume_rubble(self):
-        self.rubble_queue_head += 1
 
 def valid_loc(loc,x,y):
     return ( loc[0]+x >= 0 and loc[0]+x < 48 and loc[1]+y >= 0 and loc[1]+y < 48 )
@@ -159,6 +134,9 @@ class GameState:
 
         self.previous_state = None
 
+        self.has_lichen = False
+        self.he_has_lichen = False
+
         self.clux = clux.CLux(self.ice, self.ore, self.factories_per_team)
 
         self.set_variable_obs(obs)
@@ -223,24 +201,23 @@ class GameState:
                 for j in [-1,0,1]:
                     self.no_go_map[factory.pos[0] + i, factory.pos[1] + j] = 1
 
-    def divide_and_conquer_rubble(self):
-        # TODO use distance to his factories
-        for i in range(self.rubble.shape[0]):
-            for j in range(self.rubble.shape[1]):
-                min_dist = 100
-                closest_factory = None
-                for factory in chain(self.factories.values(), self.his_factories.values()):
-                    dist = distance( factory.pos, (i,j))
-                    if dist < min_dist:
-                        min_dist = dist
-                        closest_factory = factory
-                if self.rubble[i,j] <= 0 and min_dist > 3:  # Even if no rubble add close empty tiles. As someone could add dirt.
-                    continue
-                if closest_factory.is_my:
-                    closest_factory.rubble_queue.append(((i,j), min_dist, self.rubble[i,j] ))
 
-        for factory_id, factory in self.factories.items():
-            factory.sort_rubble_queue()
+    def update_has_lichen(self):
+        is_my_strain = {}
+        for factory in self.his_factories.values():
+            is_my_strain[factory.strain_id] = True
+        for factory in self.his_factories.values():
+            is_my_strain[factory.strain_id] = False
+
+        unique_items, item_counts = np.unique(self.lichen_strains, return_counts=True)
+
+        for strain_id, is_my in is_my_strain.items():
+            if strain_id in unique_items:
+                if is_my:
+                    self.has_lichen = True
+                else:
+                    self.he_has_lichen = True
+
 
     def set_variable_obs(self, obs):
 
@@ -326,6 +303,7 @@ class GameState:
         self.clux.update_rubble(self.rubble)
         self.clux.update_lichen(self.lichen, self.lichen_strains)
 
+        self.update_has_lichen()
 
         for unit in chain(self.units.values(), self.his_units.values()):
             mother_ship_id = ""
