@@ -430,16 +430,9 @@ class Agent:
         dx, dy = code_to_direction(move_code)
         move_pos = (px + dx, py + dy)
 
-        # if unit.unit_id == "unit_13":
-        #      print( "Power:", unit.power, " ", unit.is_powerless, file=sys.stderr )
-
         if unit.is_powerless or \
            self.is_safe(unit, move_code, self.units_map[move_pos[0]][move_pos[1]]) :
             return []
-
-        # if self.state.step == 110 and unit.unit_id == "unit_12":
-        # #     print( "me in danger:", self.state.step, file=sys.stderr )
-        #     print("die")
 
         # avoid collision by re-writing action queue
         # TODO ..if possible kill his unit by dodging there. currently dodging in random dir.
@@ -509,14 +502,12 @@ class Agent:
                 rubble_value = self.state.rubble[nx][ny]
                 power_cost = step_cost(rubble_value, unit.unit_type == "HEAVY")
 
+            # Todo possibly still can die, if change action queue later after dodging. not sure.
             if unit.unit_id in lux_actions:
                 if unit.unit_type == "HEAVY":
                     power_cost += 10
                 else:
                     power_cost += 1
-
-            if unit.unit_id == "unit_13" and unit.is_my:
-                print(self.state.me," Power:", unit.power, " ", power_cost, " - rubble" ,  file=sys.stderr)
 
             # power less units will not move
             unit.is_powerless = False
