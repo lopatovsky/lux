@@ -499,7 +499,9 @@ class Agent:
             # check power status
             power_cost = 0
             if move_code > 0:
-                rubble_value = self.state.rubble[nx][ny]
+                rubble_value = self.state.rubble[px][py]
+                if valid(nx,ny):
+                    rubble_value = self.state.rubble[nx][ny]
                 power_cost = step_cost(rubble_value, unit.unit_type == "HEAVY")
 
             # Todo possibly still can die, if change action queue later after dodging. not sure.
