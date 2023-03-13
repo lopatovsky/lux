@@ -15,59 +15,9 @@ namespace py = pybind11;
 
 using namespace std;
 
-typedef pair<int,int> ii;
-typedef vector<int> vi;
-typedef vector<vi> vvi;
-typedef vector<ii> vii;
-typedef vector<vii> vvii;
+//#include "eigen.cpp"
+#include "utils.cpp"
 
-#define MP make_pair
-#define PB push_back
-#define ff first
-#define ss second
-
-#define xx first
-#define yy second
-
-#define REP(i,a) for (int i = 0; i < (a); i++)
-#define FOR(i,a,b) for (int i = (a); i <= (b); i++)
-
-int N = 48;
-
-bool is_day(int step){
-    int mod = step % 50;
-    return mod < 30;
-}
-
-bool valid(int i, int j){
-    return i >= 0 && j >= 0 && i < N && j < N;
-}
-
-int distance(int x0, int y0, int x1, int y1){
-    return abs(x0 - x1) + abs(y0 - y1);
-}
-
-bool is_in_factory( ii factory, ii pos){
-    return max(abs(factory.xx - pos.xx) , abs(factory.yy - pos.yy)) <= 1;
-}
-
-vii code_to_direction = {{0, 0}, {0, -1}, {1, 0}, {0, 1}, {-1, 0}};
-
-vvi board(){
-    vvi b(N, vi(N));
-    return b;
-}
-
-vvi board(int val){
-    vvi b(N, vi(N, val));
-    return b;
-}
-
-int step_price(int rubble_value, bool heavy){
-    // light cost of moving: floor( 1 + 0.05*rubble )
-    // heavy cost of moving: floor( 20 + 1*rubble )
-    return heavy ? 20 + rubble_value : 1 + rubble_value/20;
-}
 
 // LOL
 const vvi& factory_surrounding_mask = {
@@ -565,6 +515,97 @@ public:
     }
 
     // Optimize on energy and turns
+    std::pair<int, vector<Action>> shortest_path_dist_price(int t, int x0, int y0, int x1, int y1, bool is_heavy){
+        // int step = TODO for energy
+
+        // TODO for hypercorrect ..should be triple< energy, len, turns. maybe shorter path exists with more turns.
+
+        vvii distance_map(N, vii(N, MP(1e6,1e6)));  // map of (distance, turn/segment) pairs
+        auto visited = board(0);
+        auto dir = board(0);
+
+        priority_queue<pair<ii,ii>, vector<pair<ii,ii>>, greater<pair<ii,ii>> > q;
+        q.push(MP(MP(0,0),MP(x0, y0)));  // (dist + price) (pos_x, pos_y)
+        dir[x0][y0] = 0;  // holds direction from which it was visited 1-4.
+        distance_map[x0][y0] = MP(0,0);
+
+        while (!q.empty()) {
+
+            const auto& [my_obj, point] = q.top();
+            int my_dist = my_obj.ff, my_price = my_obj.ss;
+            int x = point.xx, y = point.yy;
+            q.pop();
+
+            if (x==x1 && y==y1) break;
+
+            if(visited[x][y]) continue;
+            visited[x][y] = 1;
+            int my_dir = dir[x][y];
+
+            FOR(code,1,4){
+                 int nx = x + code_to_direction[code].xx;
+                 int ny = y + code_to_direction[code].yy;
+                 if (valid(nx,ny) && !visited[nx][ny]){
+                    int dist = my_dist + 1;
+                    int price = step_price(rubble[nx][ny], is_heavy);  // TODO!!! NO GO factories.
+                    int sum_price = my_price + 0;
+
+                    ii obj = MP(dist, sum_price);
+
+                    if (obj < distance_map[nx][ny]){
+                        distance_map[nx][ny] = obj;
+                        dir[nx][ny] = code;
+                        q.push(MP(obj,MP(nx, ny)));
+                    }
+                 }
+            }
+        }
+
+        // print_board(dir);
+        // print_board(distance_map);
+
+        int energy = distance_map[x1][y1].ff;
+        int turns = distance_map[x1][y1].ss;
+
+        int x = x1;
+        int y = y1;
+
+        int len = 0;
+        vector<int> path;
+
+        while( dir[x][y] != 0){
+            path.PB(dir[x][y]);
+            const auto& p = code_to_direction[dir[x][y]];
+            x = x - p.xx;
+            y = y - p.yy;
+            ++len;
+        }
+        reverse(path.begin(), path.end());
+
+        // subtract energy gains if it is day.
+        int daily_gain = is_heavy ? 10:1;
+        int t0 = t;
+        REP(i,path.size()){
+            energy -= is_day(t0++) ? daily_gain: 0;
+        }
+
+        vector<Action> actions;
+        int start_segment = 0;
+        path.PB(0);  // padding for last segment
+
+        int path_size = path.size();
+        FOR(i,1, path_size-1){
+          if(path[i] != path[i-1]){
+            actions.PB(move_action(path[i-1], i - start_segment));
+            start_segment = i;
+          }
+        }
+
+        return {energy, actions};
+    }
+
+
+    // Optimize on energy and turns
     std::pair<int, vector<Action>> shortest_path(int t, int x0, int y0, int x1, int y1, bool is_heavy){
         // int step = TODO for energy
 
@@ -582,7 +623,7 @@ public:
         while (!q.empty()) {
 
             const auto& [my_obj, point] = q.top();
-            int my_dist = my_obj.xx, my_turns = my_obj.yy;
+            int my_dist = my_obj.ff, my_turns = my_obj.ss;
             int x = point.xx, y = point.yy;
             q.pop();
 
