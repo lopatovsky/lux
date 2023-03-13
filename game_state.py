@@ -235,7 +235,7 @@ class GameState:
         his_units_data = obs.obs["units"][self.him]
         self.process_units( his_units_data, self.his_units, is_my = False)
 
-        self.units_map = self.create_units_map(self.units, self.his_units)
+        # self.units_map = self.create_units_map(self.units, self.his_units)
 
         factories_data = obs.obs["factories"][self.me]
         for factory_id in factories_data.keys():

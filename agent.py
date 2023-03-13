@@ -1,12 +1,13 @@
 import sys
 import math
 import random
+from itertools import chain
 
 import numpy as np
 import torch as th
 
 from lux.kit import process_action
-from lux.utils import code_to_direction, next_move, valid, distance
+from lux.utils import code_to_direction, next_move, valid, distance, step_cost
 
 from wrappers import LuxObservationWrapper, LuxController
 
@@ -291,80 +292,259 @@ class Agent:
         mod_step = self.state.step % 50
         return mod_step >= 30
 
-    def insufficient_power(self, unit):
-        # TODO this is only for light units. Sometimes may be unnecessery restrictive.
-        return unit.power < 6
+    # def insufficient_power(self, unit):
+    #     # TODO this is only for light units. Sometimes may be unnecessery restrictive.
+    #     return unit.power < 6
+    #
+    # def win_collision(self, unit, move_code, c_unit, collision_code):
+    #     # TODO check for energy consumption of the current move & if power are the same
+    #     if unit.unit_type == c_unit.unit_type:
+    #         if move_code == 0 and collision_code > 0:
+    #             if c_unit.is_my or self.insufficient_power( unit ):
+    #                 return True  # standing or weak unit is sacred
+    #             return False
+    #         elif collision_code == 0 and move_code > 0:
+    #             if c_unit.is_my or self.insufficient_power( c_unit ): # never move into standing unit or weak unit
+    #                 return False
+    #             return True  # returning True means possible killing.
+    #         else:
+    #             return unit.power > c_unit.power
+    #     return unit.unit_type < c_unit.unit_type  # "H" < "L"
+    #
+    # def is_safe(self, unit, move_code, colliding_units):
+    #
+    #     #  if move_code zero than win collision not on power
+    #     for collision_code, c_unit in colliding_units:
+    #         if unit == c_unit:
+    #             continue
+    #         if not self.win_collision(unit, move_code, c_unit, collision_code):
+    #             return False
+    #     return True
+    #
+    # def is_small_risk(self, unit, move_code, colliding_units):
+    #     min_code = 2
+    #     for collision_code, c_unit in colliding_units:
+    #         if unit == c_unit:
+    #             continue
+    #         if not self.win_collision(unit, move_code, c_unit, collision_code):
+    #             min_code = min(min_code, collision_code)
+    #     return min_code == 2
+    #
+    # def resolve_collisions(self, unit, lux_actions):
+    #     # Either check unit's action queue, or the lux actions that are about to overwrite it.
+    #     if unit.unit_id in lux_actions:
+    #         u_actions = lux_actions[unit.unit_id]
+    #         move_code = 0
+    #         if len(u_actions) > 0 and u_actions[0][0] == 0:  # first action's first value is zero -> means moving action.
+    #             move_code = u_actions[0][1]  # move code of first action
+    #     else:
+    #         move_code = next_move(unit)
+    #
+    #     move_dir = code_to_direction(move_code)
+    #     move_pos = (unit.pos[0] + move_dir[0], unit.pos[1] + move_dir[1])
+    #
+    #     if self.is_safe(unit, move_code, self.state.units_map[move_pos[0]][move_pos[1]]):
+    #         return []
+    #
+    #     safe_dir_codes = []
+    #     small_risk_dir_codes = []
+    #     for code, dir in [(0, (0, 0)) ,(1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
+    #         loc = unit.pos[0] + dir[0], unit.pos[1] + dir[1]
+    #         if valid(*loc) and not self.state.no_go_map[loc]:
+    #             if self.is_safe(unit, code, self.state.units_map[loc[0]][loc[1]]):
+    #                 safe_dir_codes.append(code)
+    #             elif self.is_small_risk(unit, code, self.state.units_map[loc[0]][loc[1]]):
+    #                 small_risk_dir_codes.append(code)
+    #     length = len(safe_dir_codes)
+    #     if length == 0:
+    #         print("potentially trapped", file=sys.stderr)
+    #         length = len(small_risk_dir_codes)
+    #         if length == 0:
+    #             print("trapped", file=sys.stderr)
+    #             return [np.array([0, np.random.randint(low=0, high=5), 0, 0, 0, 1])]
+    #         else:
+    #             return [np.array([0, small_risk_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
+    #     else:
+    #         return [np.array([0, safe_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
+    #
+    # redo_cnt = 0
 
-    def win_collision(self, unit, move_code, c_unit, collision_code):
-        # TODO check for energy consumption of the current move & if power are the same
-        if unit.unit_type == c_unit.unit_type:
-            if move_code == 0 and collision_code > 0:
-                if c_unit.is_my or self.insufficient_power( unit ):
-                    return True  # standing or weak unit is sacred
+
+    def win_collision(self, unit, move_code, c_unit, collision_code, is_dodge):
+        # don't kill powerless, don't disturb working friend.
+        if c_unit.is_my:
+            # if dodging, we do not know if do unit will learn about our action, so always false.
+            if is_dodge:
                 return False
-            elif collision_code == 0 and move_code > 0:
-                if c_unit.is_my or self.insufficient_power( c_unit ): # never move into standing unit or weak unit
-                    return False
+
+            ### take care of friendly unit
+            # code:0 - battery death/dodge, code:1 - not moving -> do not disturb working unit policy
+            if collision_code <= 1:
+                return False
+            # code:2 - weaker unit should run away, so it's handled the same way as his unit
+
+            ### I can rely on care taken of me. Except I just dodged to move_code 0. They may not know about me.
+            if move_code == 0:
+                return True
+
+        if unit.unit_type == c_unit.unit_type:
+            # my unit does not move, his unit moves. 2:move-planned, 3:move-unplanned
+            if move_code == 0 and collision_code in [2,4]:
+                return False
+            # my unit moves, his unit does not move. 0:death-battery, 1:stay-planned, 3:stay-not_planned
+            elif collision_code in [0,1,3] and move_code > 0:
                 return True  # returning True means possible killing.
             else:
+                # TODO check for energy consumption of the current move
+                # TODO what if it's equal
                 return unit.power > c_unit.power
         return unit.unit_type < c_unit.unit_type  # "H" < "L"
 
-    def is_safe(self, unit, move_code, colliding_units):
+    def is_safe(self, unit, move_code, colliding_units, is_dodge = False):
 
-        #  if move_code zero than win collision not on power
         for collision_code, c_unit in colliding_units:
             if unit == c_unit:
                 continue
-            if not self.win_collision(unit, move_code, c_unit, collision_code):
+            if not self.win_collision(unit, move_code, c_unit, collision_code, is_dodge):
                 return False
         return True
 
-    def is_small_risk(self, unit, move_code, colliding_units):
-        min_code = 2
+    def is_small_risk(self, unit, move_code, colliding_units, is_dodge = False):
+
         for collision_code, c_unit in colliding_units:
             if unit == c_unit:
                 continue
-            if not self.win_collision(unit, move_code, c_unit, collision_code):
-                min_code = min(min_code, collision_code)
-        return min_code == 2
+            if not self.win_collision(unit, move_code, c_unit, collision_code, is_dodge):
+                # code 3 and 4 are potential moves.
+                if collision_code < 3:
+                    return False
+        return True
+
 
     def resolve_collisions(self, unit, lux_actions):
-        # Either check unit's action queue, or the lux actions that are about to overwrite it.
-        if unit.unit_id in lux_actions:
-            u_actions = lux_actions[unit.unit_id]
-            move_code = 0
-            if len(u_actions) > 0 and u_actions[0][0] == 0:  # first action's first value is zero -> means moving action.
-                move_code = u_actions[0][1]  # move code of first action
-        else:
-            move_code = next_move(unit)
 
-        move_dir = code_to_direction(move_code)
-        move_pos = (unit.pos[0] + move_dir[0], unit.pos[1] + move_dir[1])
+        move_code = unit.next_move
+        px = unit.pos[0]
+        py = unit.pos[1]
 
-        if self.is_safe(unit, move_code, self.state.units_map[move_pos[0]][move_pos[1]]):
+        dx, dy = code_to_direction(move_code)
+        move_pos = (px + dx, py + dy)
+
+        # if unit.unit_id == "unit_13":
+        #      print( "Power:", unit.power, " ", unit.is_powerless, file=sys.stderr )
+
+        if unit.is_powerless or \
+           self.is_safe(unit, move_code, self.units_map[move_pos[0]][move_pos[1]]) :
             return []
 
+        # if self.state.step == 110 and unit.unit_id == "unit_12":
+        # #     print( "me in danger:", self.state.step, file=sys.stderr )
+        #     print("die")
+
+        # avoid collision by re-writing action queue
+        # TODO ..if possible kill his unit by dodging there. currently dodging in random dir.
         safe_dir_codes = []
         small_risk_dir_codes = []
-        for code, dir in [(0, (0, 0)) ,(1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
-            loc = unit.pos[0] + dir[0], unit.pos[1] + dir[1]
+        for code, dir in [(0, (0, 0)), (1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
+            loc = px + dir[0], py + dir[1]
             if valid(*loc) and not self.state.no_go_map[loc]:
-                if self.is_safe(unit, code, self.state.units_map[loc[0]][loc[1]]):
+                if self.is_safe(unit, code, self.units_map[loc[0]][loc[1]], is_dodge=True):
                     safe_dir_codes.append(code)
-                elif self.is_small_risk(unit, code, self.state.units_map[loc[0]][loc[1]]):
+                elif self.is_small_risk(unit, code, self.units_map[loc[0]][loc[1]], is_dodge=True):
                     small_risk_dir_codes.append(code)
         length = len(safe_dir_codes)
         if length == 0:
-            print("potentially trapped", file=sys.stderr)
+            print(unit.unit_id, ":potentially trapped", file=sys.stderr)
             length = len(small_risk_dir_codes)
             if length == 0:
-                print("trapped", file=sys.stderr)
-                return [np.array([0, np.random.randint(low=0, high=5), 0, 0, 0, 1])]
+                print( unit.unit_id, ": trapped", file=sys.stderr)
+                return self.process_dodge_move( unit, np.random.randint(low=0, high=5))
             else:
-                return [np.array([0, small_risk_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
+                return self.process_dodge_move( unit, small_risk_dir_codes[np.random.randint(low=0, high=length)])
         else:
-            return [np.array([0, safe_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
+            return self.process_dodge_move( unit, safe_dir_codes[np.random.randint(low=0, high=length)])
+
+    def process_dodge_move(self, unit, random_dir):
+        dx, dy = code_to_direction(random_dir)
+        # this is a hack. Set it as death, so no one else following would dodge the same place.
+        # TODO Heavy units should dodge first
+        self.units_map[unit.pos[0] + dx][unit.pos[1] + dy].append((0, unit))
+        return [np.array([0, random_dir, 0, 0, 0, 1])]
+
+    def create_units_map_advanced(self, lux_actions):
+        """
+        in next move
+        0 - unit is there and will be there for sure - death battery
+        1 - unit is there and will be there if follows action queue (not move)
+        2 - unit will move there if follows action queue
+        3 - potential next move location if queue changes and no move is done (only his units)
+        4 - potential next move location if queue changes and unit moves (only his units)
+        """
+        units = self.state.units
+        his_units = self.state.his_units
+
+        map = [[[] for i in range(48)] for j in range(48)]
+        for unit in chain(units.values(), his_units.values()):
+            px = unit.pos[0]
+            py = unit.pos[1]
+
+            # get scheduled move code
+            if unit.unit_id in lux_actions:
+                u_actions = lux_actions[unit.unit_id]
+                move_code = 0
+                if len(u_actions) > 0 and u_actions[0][0] == 0:  # first action's first value is zero -> means moving action.
+                    move_code = u_actions[0][1]  # move code of first action
+            else:
+                move_code = next_move(unit)
+
+            unit.next_move = move_code
+
+            dx, dy = code_to_direction(move_code)
+            nx = px + dx
+            ny = py + dy
+
+            # check power status
+            power_cost = 0
+            if move_code > 0:
+                rubble_value = self.state.rubble[nx][ny]
+                power_cost = step_cost(rubble_value, unit.unit_type == "HEAVY")
+
+            if unit.unit_id in lux_actions:
+                if unit.unit_type == "HEAVY":
+                    power_cost += 10
+                else:
+                    power_cost += 1
+
+            if unit.unit_id == "unit_13" and unit.is_my:
+                print(self.state.me," Power:", unit.power, " ", power_cost, " - rubble" ,  file=sys.stderr)
+
+            # power less units will not move
+            unit.is_powerless = False
+            if power_cost > unit.power:
+                map[px][py].append((0, unit))
+                unit.is_powerless = True
+                continue
+
+            # TODO if his unit had empty queue. we set here 1,2, even formally it should be 3or4.
+            # set scheduled move
+            if valid(nx, ny):
+                if move_code == 0:
+                    map[nx][ny].append((1, unit))
+                else:
+                    map[nx][ny].append((2, unit))
+
+            # set potential moves of opponent if unit changes the action queue
+            if not unit.is_my:
+                for dir_code, dir in [(0, (0, 0)), (1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
+                    if dir_code != move_code:
+                        loc = (px + dir[0], py + dir[1])
+                        if valid(*loc):
+                            if dir_code == 0:
+                                map[loc[0]][loc[1]].append((3, unit))
+                            else:
+                                map[loc[0]][loc[1]].append((4, unit))
+
+        return map
 
     redo_cnt = 0
 
@@ -455,6 +635,8 @@ class Agent:
         print(occ_counts, file=sys.stderr)
 
         # Collisions
+        self.units_map = self.create_units_map_advanced(lux_action)
+
         for unit_id in units.keys():
             action = self.resolve_collisions(units[unit_id], lux_action)
             if len(action) != 0:
@@ -478,7 +660,7 @@ class Agent:
         # doesn't create unit if it is dangerous
         for factory_id, factory in factories.items():
             if factory_id in lux_action:
-                if len(self.state.units_map[factory.pos[0]][factory.pos[1]]) > 0:
+                if len(self.units_map[factory.pos[0]][factory.pos[1]]) > 0:
                     del lux_action[factory_id]
 
         for factory_id in self.state.factories.keys():
