@@ -451,20 +451,35 @@ class Agent:
             length = len(small_risk_dir_codes)
             if length == 0:
                 print( unit.unit_id, ": trapped", file=sys.stderr)
-                return self.process_dodge_move(
-                    unit, valid_codes[np.random.randint(low=0, high=len(valid_codes))])
+                return self.process_dodge_move(unit, valid_codes)
             else:
-                return self.process_dodge_move(
-                    unit, small_risk_dir_codes[np.random.randint(low=0, high=length)])
+                return self.process_dodge_move( unit, small_risk_dir_codes)
         else:
             return self.process_dodge_move(
-                unit, safe_dir_codes[np.random.randint(low=0, high=length)])
+                unit, safe_dir_codes)
 
     dodges = 0
 
-    def process_dodge_move(self, unit, dir, killing_dodges):
+    def process_dodge_move(self, unit, move_codes):
         self.dodges +=1
         print(self.dodges, ": dodge number", file=sys.stderr)
+
+        # idea to dodge closer home if low on battery, seem not to work much
+        # power_for_step = 1
+        # if unit.is_heavy:
+        #     power_for_step = 20
+        #
+        # if unit.power < power_for_step * (distance(unit.pos, unit.mother_ship.pos) + 1):
+        #     min_dist = 100
+        #     dir = move_codes[0]
+        #     for code in move_codes:
+        #         dx, dy = code_to_direction(code)
+        #         dist = distance((unit.pos[0] + dx,unit.pos[1] + dy), unit.mother_ship.pos)
+        #         if dist < min_dist:
+        #             min_dist = dist
+        #             dir = code
+        # else:
+        dir = move_codes[np.random.randint(low=0, high=len(move_codes))]
 
         dx, dy = code_to_direction(dir)
         # this is a hack. Set it as death, so no one else following would dodge the same place.
@@ -510,11 +525,11 @@ class Agent:
                 rubble_value = self.state.rubble[px][py]
                 if valid(nx,ny):
                     rubble_value = self.state.rubble[nx][ny]
-                power_cost = step_cost(rubble_value, unit.unit_type == "HEAVY")
+                power_cost = step_cost(rubble_value, unit.is_heavy)
 
             # Todo possibly still can die, if change action queue later after dodging. not sure.
             if unit.unit_id in lux_actions:
-                if unit.unit_type == "HEAVY":
+                if unit.is_heavy:
                     power_cost += 10
                 else:
                     power_cost += 1
