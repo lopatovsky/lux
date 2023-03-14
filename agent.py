@@ -369,9 +369,9 @@ class Agent:
 
 
     def win_collision(self, unit, move_code, c_unit, collision_code, is_dodge):
-        # don't kill powerless, don't disturb working friend.
-        if c_unit.is_my:
-            # if dodging, we do not know if do unit will learn about our action, so always false.
+        # don't kill powerless, don't disturb working friend. (except heavy)
+        if c_unit.is_my and not c_unit.is_heavy:
+            # if dodging, we do not know if the unit will learn about our action, so always false.
             if is_dodge:
                 return False
 
@@ -458,11 +458,11 @@ class Agent:
             return self.process_dodge_move(
                 unit, safe_dir_codes)
 
-    dodges = 0
+    #dodges = 0
 
     def process_dodge_move(self, unit, move_codes):
-        self.dodges +=1
-        print(self.dodges, ": dodge number", file=sys.stderr)
+        #self.dodges +=1
+        #print(self.dodges, ": dodge number", file=sys.stderr)
 
         # idea to dodge closer home if low on battery, seem not to work much
         # power_for_step = 1
@@ -665,16 +665,15 @@ class Agent:
 
         # creates a heavy unit.
         if len(units) == 0:
-            for factory_id in factories.keys():
+            for factory_id, factory in factories.items():
                 lux_action[factory_id] = 1
-
         # creates a light unit
         else:
-            for factory_id in factories.keys():
-                factory = factories[factory_id]
-                if factory.cargo["metal"] < 10:
+            for factory_id, factory in factories.items():
+                if factory.cargo["metal"] < 10 and factory.power < 50:
                     continue
                 lux_action[factory_id] = 0
+
 
         # doesn't create unit if it is dangerous
         for factory_id, factory in factories.items():
@@ -682,11 +681,20 @@ class Agent:
                 if len(self.units_map[factory.pos[0]][factory.pos[1]]) > 0:
                     del lux_action[factory_id]
 
-        for factory_id in self.state.factories.keys():
-            factory = self.state.factories[factory_id]
+        for factory_id, factory in self.state.factories.items():
+            if factory_id in lux_action and lux_action[factory_id] == 1:
+                continue
             K = 6
             if factory.cargo["water"] > K *(1000 - self.state.step) + 20:
                 lux_action[factory_id] = 2  # water and grow lichen at the end of the game
+
+        # count produced units:
+        for factory_id, factory in factories.items():
+            if factory_id in lux_action:
+                if lux_action[factory_id] == 0:
+                    factory.light_count+= 1
+                elif lux_action[factory_id] == 1:
+                    factory.heavy_count+= 1
 
         return lux_action
 

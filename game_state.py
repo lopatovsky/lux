@@ -28,6 +28,7 @@ class Unit:
         self.unit_id = obs["unit_id"]
         self.power = obs["power"]
         self.unit_type = obs["unit_type"]
+        self.is_heavy = self.unit_type == "HEAVY"
         self.pos = obs["pos"]
         self.cargo = obs["cargo"]
         self.action_queue = obs["action_queue"]
@@ -42,6 +43,8 @@ class Factory:
             self.last_queue_shuffle = 0
             self.state = state
             self.kids = []
+            self.heavy_count = 0
+            self.light_count = 0
 
     def update(self, obs, time):
         self.time = time
