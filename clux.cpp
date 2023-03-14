@@ -870,8 +870,11 @@ public:
         }
         // cerr << "For: " << px << ", " << py << "Assign rubble: " << best_x << ", " << best_y << endl;
 
-        // Fallback for empty queue.
         if (best_score == 1e9){
+            for (auto& [dist, loc]: factory->rubble_vec){
+                   return loc;
+            }
+            // Fallback for empty queue.
             for( auto& other_factory: my_factories){
                 if (other_factory.ss->unit_id != factory->unit_id && !other_factory.ss->rubble_vec.empty()){
                     return assign_rubble( other_factory.ss, px, py);
