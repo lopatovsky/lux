@@ -3,6 +3,9 @@ import copy
 import queue
 import numpy as np
 from itertools import chain
+from scipy.ndimage import gaussian_filter
+from PIL import Image
+from scipy.signal import convolve2d
 
 import clux
 
@@ -96,6 +99,78 @@ def build_distance_map(map, object_marker):
 
     return dist_map
 
+def gaussian_kernel(size, sigma = 1, hole = False):
+
+    kernel = np.zeros((size, size))
+    center = size // 2
+    kernel[center, center] = 1
+
+    kernel = gaussian_filter(kernel, sigma=sigma)
+
+    # hole 3x3 that factory covers
+    if hole:
+        for i in range(center-1,center+2):
+            for j in range (center-1,center+2):
+                kernel[i,j] = 0
+
+    kernel /= kernel.sum()
+    return kernel
+
+def convolution(array, kernel_size, sigma = 1, kernel_hole = False , multi = 1):
+
+    kernel = gaussian_kernel(kernel_size, sigma = sigma, hole=kernel_hole)
+    p = kernel_size // 2
+    padding = ((p, p), (p, p))
+
+    convolved_array = convolve2d(np.pad(array, padding, mode='constant', constant_values=0), kernel, mode='valid')
+    if multi > 1:
+        for i in range(multi-1):
+            convolved_array = convolve2d(
+                np.pad(convolved_array, padding, mode='constant', constant_values=0), kernel, mode='valid')
+
+    print("conv. array_size:", (convolved_array.max() - convolved_array.min()), " ", convolved_array.shape, file=sys.stderr)
+
+    # Normalize pixel values between 0 and 1
+    normalized_array = 100 * (convolved_array - convolved_array.min()) / (convolved_array.max() - convolved_array.min())
+
+    return normalized_array
+
+def numpy_to_img( array ):
+    normalized_array = 255 * (array - array.min()) / (array.max() - array.min())
+    uint8_array = np.uint8(normalized_array.T)
+    image = Image.fromarray(uint8_array, mode='L')
+    image.save('X.png')
+
+
+def init_convolutions(state, rubble, ore, factories, his_factories):
+    print( state.step, "rubble", file=sys.stderr)
+    r = convolution(rubble, 15, kernel_hole = True)
+    print("ore", file=sys.stderr)
+    o = convolution(ore, 9, sigma = 5, multi = 5)
+
+    mf = factory_map = np.zeros((48,48))
+    for factory in factories.values():
+        factory_map[factory.pos[0], factory.pos[1]] = 1
+
+    hf = his_factory_map = np.zeros((48, 48))
+    for factory in his_factories.values():
+        his_factory_map[factory.pos[0], factory.pos[1]] = 1
+
+    print("mf", len(factories), "map ", factory_map[7][7], file=sys.stderr)
+    if len(factories) > 0:
+        mf = convolution(factory_map, 7, sigma=5, multi=10)
+    print("hf", len(his_factories), "map ", his_factory_map[7][7], file=sys.stderr)
+    if len(his_factories) > 0:
+        hf = convolution(his_factory_map, 7, sigma=5, multi=10)
+
+    # minimizing score. Black is better
+
+    best_places = 3 * r - 3 * o + 1 * mf - 1 * hf
+    # numpy_to_img(best_places)
+
+    return best_places
+
+
 class GameState:
 
     def __init__(self, obs, cfg):
@@ -142,7 +217,7 @@ class GameState:
         self.set_variable_obs(obs)
 
     def update(self, obs):
-        self.previous_state = copy.copy(self)
+        # self.previous_state = copy.copy(self)
         self.set_variable_obs(obs)
 
     def update_board(self, board, update_vec):
@@ -290,6 +365,10 @@ class GameState:
             if "valid_spawns_mask" in self.board:
                 #print(self.board["valid_spawns_mask"], file=sys.stderr)
                 self.valid_spawns_mask = np.array(self.board["valid_spawns_mask"])
+
+        if self.step < 0:
+            init_convolution = init_convolutions(self, self.rubble, self.ore, self.factories, self.his_factories)
+            self.clux.update_factory_init_convolution(init_convolution)
 
         if self.step == 0:
             self.factory_loc_dict = dict()

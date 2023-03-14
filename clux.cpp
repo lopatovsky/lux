@@ -171,7 +171,7 @@ public:
     std::string mother_ship_id;
 };
 
-vvi numpy_to_vector(py::array_t<int> array, int border_value){
+vvi numpy_to_vector(py::array_t<int> array){
     if (array.ndim() != 2 || array.shape(0) != N || array.shape(1) != N) {
         throw std::runtime_error("Input matrix must have shape (48, 48)");
     }
@@ -287,8 +287,8 @@ vvi get_rubble_around_factory_map(vvi rubble){
 class CLux {
 public:
     CLux(py::array_t<int> _ice, py::array_t<int> _ore, int factories_per_team_):factories_per_team(factories_per_team_){
-        ice = numpy_to_vector(_ice, -1);
-        ore = numpy_to_vector(_ore, -1);
+        ice = numpy_to_vector(_ice);
+        ore = numpy_to_vector(_ore);
 
         ice_dist = distance_map(ice);
         ore_dist = distance_map(ore);
@@ -296,12 +296,16 @@ public:
 
     // A bit more effectively just take in the diff. but maybe who cares.
     void update_rubble(py::array_t<int> _rubble){
-        rubble = numpy_to_vector(_rubble, 1e9);
+        rubble = numpy_to_vector(_rubble);
     }
 
     void update_lichen(py::array_t<int> _lichen, py::array_t<int> _lichen_strains){
-        lichen = numpy_to_vector(_lichen, -1);
-        lichen_strains = numpy_to_vector(_lichen_strains, -1);
+        lichen = numpy_to_vector(_lichen);
+        lichen_strains = numpy_to_vector(_lichen_strains);
+    }
+
+    void update_factory_init_convolution(py::array_t<int> _convolution){
+        init_factory_convolution = numpy_to_vector(_convolution);
     }
 
     void update_factory(std::string u, int s, bool my, int pow, int x, int y,
@@ -1052,24 +1056,18 @@ public:
             if( !valid(x,y) || ice[x][y] || ore[x][y]) return 1000000;
         }
 
-        int factory_dist = closest_factory(i,j, factories);
-        if (factory_dist <= 7) return 1000000;
+        if (closest_factory(i,j, factories) <= 7) return 1000000;
 
         int ice_distance = 100;
-        int ore_distance = 100;
 
         for(const auto& [x, y]: iterate_mask({i,j}, factory_close_mask)){
             if (valid(x,y)){
                 ice_distance = min(ice_distance, ice_dist[x][y]);
-                ore_distance = min(ore_distance, ore_dist[x][y]);
             }
         }
+        int conv_value = init_factory_convolution[i][j];
 
-        // todo use my factory_dist in the function. seed 45
-
-        int rubble_acc = rubble_around_factory[i][j];
-
-        return ice_distance * 2000 + ore_distance + rubble_acc;
+        return ice_distance * 2000 + conv_value;
     }
 
     ii place_factory(){
@@ -1092,7 +1090,7 @@ private:
     std::unordered_map <std::string, Unit*> my_units, his_units;
 
     int real_step, step, factories_per_team;
-    vvi ice, ore, rubble, lichen, lichen_strains;
+    vvi ice, ore, rubble, lichen, lichen_strains, init_factory_convolution;
 
     vvi ice_dist, ore_dist, rubble_around_factory, assigned_rubbles;
 };
@@ -1110,6 +1108,7 @@ PYBIND11_MODULE(clux, m) {
         .def("remove_zombie_unit", &CLux::remove_zombie_unit)
         .def("update_assorted", &CLux::update_assorted)
 
+        .def("update_factory_init_convolution", &CLux::update_factory_init_convolution)
         .def("place_factory", &CLux::place_factory)
 
         .def("remove_rubble_action", &CLux::remove_rubble_action)

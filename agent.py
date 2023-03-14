@@ -565,7 +565,7 @@ class Agent:
             if len(unit.action_queue) == 0:
 
                 self.redo_cnt +=1
-                print( "redo: ", self.redo_cnt , file=sys.stderr)
+                # print( "redo: ", self.redo_cnt , file=sys.stderr)
 
                 # TODO orchestration by ML oracle.
                 np_rand = np.random.rand()
