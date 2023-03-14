@@ -272,6 +272,7 @@ class GameState:
 
     def build_no_go_map(self):
         """Opponent factories"""
+        no_go_map = np.zeros((48, 48))
         for factory in self.his_factories.values():
             for i in [-1,0,1]:
                 for j in [-1,0,1]:
@@ -353,6 +354,8 @@ class GameState:
         for key in delete_keys:
             del self.his_factories[key]
             self.clux.remove_zombie_factory(key)
+        if len(delete_keys) > 0:
+            self.build_no_go_map()
 
 
         if  len(obs.obs["teams"]) > 0:
