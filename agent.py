@@ -393,7 +393,7 @@ class Agent:
             elif collision_code in [0,1,3] and move_code > 0:
                 return True  # returning True means possible killing.
             else:
-                # TODO check for energy consumption of the current move
+                # TODO check for energy consumption of the current move. + was activity queue changed? (for example dodging means it will overwrite)
                 # TODO what if it's equal
                 return unit.power > c_unit.power
         return unit.unit_type < c_unit.unit_type  # "H" < "L"
@@ -434,11 +434,13 @@ class Agent:
 
         # avoid collision by re-writing action queue
         # TODO ..if possible kill his unit by dodging there. currently dodging in random dir.
+        valid_codes = []
         safe_dir_codes = []
         small_risk_dir_codes = []
         for code, dir in [(0, (0, 0)), (1, (0, -1)), (2, (1, 0)), (3, (0, 1)), (4, (-1, 0))]:
             loc = px + dir[0], py + dir[1]
             if valid(*loc) and not self.state.no_go_map[loc]:
+                valid_codes.append(code)
                 if self.is_safe(unit, code, self.units_map[loc[0]][loc[1]], is_dodge=True):
                     safe_dir_codes.append(code)
                 elif self.is_small_risk(unit, code, self.units_map[loc[0]][loc[1]], is_dodge=True):
@@ -449,18 +451,26 @@ class Agent:
             length = len(small_risk_dir_codes)
             if length == 0:
                 print( unit.unit_id, ": trapped", file=sys.stderr)
-                return self.process_dodge_move( unit, np.random.randint(low=0, high=5))
+                return self.process_dodge_move(
+                    unit, valid_codes[np.random.randint(low=0, high=len(valid_codes))])
             else:
-                return self.process_dodge_move( unit, small_risk_dir_codes[np.random.randint(low=0, high=length)])
+                return self.process_dodge_move(
+                    unit, small_risk_dir_codes[np.random.randint(low=0, high=length)])
         else:
-            return self.process_dodge_move( unit, safe_dir_codes[np.random.randint(low=0, high=length)])
+            return self.process_dodge_move(
+                unit, safe_dir_codes[np.random.randint(low=0, high=length)])
 
-    def process_dodge_move(self, unit, random_dir):
-        dx, dy = code_to_direction(random_dir)
+    dodges = 0
+
+    def process_dodge_move(self, unit, dir, killing_dodges):
+        self.dodges +=1
+        print(self.dodges, ": dodge number", file=sys.stderr)
+
+        dx, dy = code_to_direction(dir)
         # this is a hack. Set it as death, so no one else following would dodge the same place.
         # TODO Heavy units should dodge first
         self.units_map[unit.pos[0] + dx][unit.pos[1] + dy].append((0, unit))
-        return [np.array([0, random_dir, 0, 0, 0, 1])]
+        return [np.array([0, dir, 0, 0, 0, 1])]
 
     def create_units_map_advanced(self, lux_actions):
         """
@@ -619,14 +629,14 @@ class Agent:
                 elif unit.occupation == "HARAKIRI_SAMURAI":
                     lux_action[unit_id] = clux.suicide_action(unit_id, False)
 
-        occ_counts = {}
-        for unit in units.values():
-            if unit.occupation in occ_counts:
-                occ_counts[unit.occupation] +=1
-            else:
-                occ_counts[unit.occupation] = 0
-
-        print(occ_counts, file=sys.stderr)
+        # occ_counts = {}
+        # for unit in units.values():
+        #     if unit.occupation in occ_counts:
+        #         occ_counts[unit.occupation] +=1
+        #     else:
+        #         occ_counts[unit.occupation] = 0
+        #
+        # print(occ_counts, file=sys.stderr)
 
         # Collisions
         self.units_map = self.create_units_map_advanced(lux_action)
