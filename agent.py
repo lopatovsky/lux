@@ -366,8 +366,6 @@ class Agent:
     #             return [np.array([0, small_risk_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
     #     else:
     #         return [np.array([0, safe_dir_codes[np.random.randint(low=0, high=length)], 0, 0, 0, 1])]
-    #
-    # redo_cnt = 0
 
 
     def win_collision(self, unit, move_code, c_unit, collision_code, is_dodge):
@@ -536,6 +534,9 @@ class Agent:
                                 map[loc[0]][loc[1]].append((3, unit))
                             else:
                                 map[loc[0]][loc[1]].append((4, unit))
+
+        for x,y in self.state.chick_chick_locs:
+             map[x][y] = [item for item in map[x][y] if item[1].is_my]
 
         return map
 

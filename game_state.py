@@ -165,7 +165,7 @@ def init_convolutions(state, rubble, ore, factories, his_factories):
 
     # minimizing score. Black is better
 
-    best_places = 3 * r - 3 * o + 1 * mf - 1 * hf
+    best_places = 30 * r - 30 * o + 1 * mf - 1 * hf
     # numpy_to_img(best_places)
 
     return best_places
@@ -206,6 +206,7 @@ class GameState:
         self.his_factories = dict()
 
         self.no_go_map = np.zeros((48, 48))
+        self.chick_chick_locs = []
 
         self.previous_state = None
 
@@ -275,6 +276,13 @@ class GameState:
             for i in [-1,0,1]:
                 for j in [-1,0,1]:
                     self.no_go_map[factory.pos[0] + i, factory.pos[1] + j] = 1
+
+    def build_chick_chick_vec(self):
+        """Opponent factories"""
+        for factory in self.factories.values():
+            for i in [-1,0,1]:
+                for j in [-1,0,1]:
+                    self.chick_chick_locs.append((factory.pos[0] + i, factory.pos[1] + j))
 
 
     def update_has_lichen(self):
@@ -366,13 +374,14 @@ class GameState:
                 #print(self.board["valid_spawns_mask"], file=sys.stderr)
                 self.valid_spawns_mask = np.array(self.board["valid_spawns_mask"])
 
-        if self.step < 0:
-            init_convolution = init_convolutions(self, self.rubble, self.ore, self.factories, self.his_factories)
-            self.clux.update_factory_init_convolution(init_convolution)
+        # if self.step < 0:
+        #     init_convolution = init_convolutions(self, self.rubble, self.ore, self.factories, self.his_factories)
+        #     self.clux.update_factory_init_convolution(init_convolution)
 
         if self.step == 0:
             self.factory_loc_dict = dict()
             self.build_no_go_map()
+            self.build_chick_chick_vec()
             for factory in self.factories.values():
                 self.factory_loc_dict[(factory.pos[0], factory.pos[1])] = factory
 
