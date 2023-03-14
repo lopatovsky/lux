@@ -1,3 +1,46 @@
+if (best_score == 1e9){
+            for (auto& [dist, loc]: factory->rubble_vec){
+                   return loc;
+            }
+            // Fallback for empty queue.
+            for( auto& other_factory: my_factories){
+                if (other_factory.ss->unit_id != factory->unit_id && !other_factory.ss->rubble_vec.empty()){
+                    return assign_rubble( other_factory.ss, px, py);
+                }
+            }
+        }
+        
+        
+.def("update_factory_init_convolution", &CLux::update_factory_init_convolution)
+
+void update_factory_init_convolution(py::array_t<int> _convolution){
+        init_factory_convolution = numpy_to_vector(_convolution);
+    }
+    
+    int factory_placement_value(int i, int j){
+        if(rubble_around_factory.empty()){
+            rubble_around_factory = get_rubble_around_factory_map(rubble);
+        }
+
+        for(const auto& [x, y]: iterate_mask({i,j},factory_mask) ){
+            if( !valid(x,y) || ice[x][y] || ore[x][y]) return 1000000;
+        }
+
+        if (closest_factory(i,j, factories) <= 7) return 1000000;
+
+        int ice_distance = 100;
+
+        for(const auto& [x, y]: iterate_mask({i,j}, factory_close_mask)){
+            if (valid(x,y)){
+                ice_distance = min(ice_distance, ice_dist[x][y]);
+            }
+        }
+        int conv_value = init_factory_convolution[i][j];
+
+        return ice_distance * 2000 + conv_value;
+    }        
+
+
     def reconstruct_action_queue(self, old_queue, random_dir):
 
         print("old ", old_queue, file=sys.stderr)
