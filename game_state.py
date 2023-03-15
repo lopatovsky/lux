@@ -61,6 +61,7 @@ class Factory:
             kid.mother_ship = step_mother
             step_mother.kids.append(kid)
             kid.init_pos = step_mother.pos  # Brainwashing :)
+            kid.activity_queue = []
             kid.occupation = "NERVER"
 
 
