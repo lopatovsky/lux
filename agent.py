@@ -2,6 +2,7 @@ import sys
 import math
 import random
 from itertools import chain
+from collections import defaultdict
 
 import numpy as np
 import torch as th
@@ -570,7 +571,35 @@ class Agent:
 
     redo_cnt = 0
 
-    # TODO move this to controller?
+
+    def assign_jobs(self):
+        units = self.state.units
+        factories = self.state.factories
+
+        for factory in factories.values():
+            factory.labor_register = defaultdict(int)
+            factory.heavy_labor_register = defaultdict(int)
+            factory.unit_cnt = 0
+            factory.heavy_unit_cnt = 0
+
+        for unit in units.values():
+            mother = factories[unit.mother_ship.unit_id]
+            if unit.is_heavy:
+                mother.heavy_labor_register[unit.occupation]+=1
+                mother.heavy_unit_cnt+= 1
+            else:
+                mother.labor_register[unit.occupation]+=1
+                mother.unit_cnt+= 1
+
+        for factory_key, factory in factories.items():
+            print(factory_key, file=sys.stderr)
+            for occ, cnt in factory.heavy_labor_register.items():
+                print(" [HEAVY]", occ, ":", cnt, file=sys.stderr)
+            for occ, cnt in factory.labor_register.items():
+                print(" ", occ, ":", cnt, file=sys.stderr)
+
+
+    # TODO orchestration by ML oracle.
     def rule_based_actions(self):
         lux_action = dict()
 
@@ -587,6 +616,7 @@ class Agent:
         has_lichen = self.state.has_lichen
         he_has_lichen = self.state.he_has_lichen
 
+        self.assign_jobs()
 
         for unit_id in units.keys():
             unit = units[unit_id]
@@ -598,27 +628,31 @@ class Agent:
 
                 # self.redo_cnt +=1
                 # print( "redo: ", self.redo_cnt , file=sys.stderr)
+                register = unit.mother_ship.labor_register
+                heavy_register = unit.mother_ship.heavy_labor_register
+                unit_cnt = unit.mother_ship.unit_cnt
 
-                # TODO orchestration by ML oracle.
                 np_rand = np.random.rand()
 
                 if unit.occupation == "NONE":
-                    if unit.unit_type == 'HEAVY' and self.state.step < 10:
-                        unit.occupation = 'ICE_MINER'
-                    elif unit.unit_type == 'HEAVY':
-                        unit.occupation = 'NERVER'
-                    elif he_has_lichen and has_lichen:  # LIGHT
-                        if np_rand < 0.5:
-                            unit.occupation = "INNER_LICHEN_EATER"
-                        else:
-                            unit.occupation = "OUTER_LICHEN_EATER"
-                    else:
-                        if np_rand < 0.6:
-                            unit.occupation = 'RUBBLE_EATER'
-                        elif np_rand < 0.8:
-                            unit.occupation = 'ORE_MINER'
+                    if unit.unit_type == 'HEAVY':
+                        if heavy_register["ICE_MINER"] < 1:
+                            unit.occupation = 'ICE_MINER'
                         else:
                             unit.occupation = 'NERVER'
+                    else: # LIGHT
+                        if he_has_lichen and has_lichen:
+                            if np_rand < 0.5:
+                                unit.occupation = "INNER_LICHEN_EATER"
+                            else:
+                                unit.occupation = "OUTER_LICHEN_EATER"
+                        else:
+                            if register['ORE_MINER'] < 1 + unit_cnt // 5:
+                                unit.occupation = 'ORE_MINER'
+                            elif register['RUBBLE_EATER'] < 1 + unit_cnt * 3 // 5:
+                                unit.occupation = 'RUBBLE_EATER'
+                            else:
+                                unit.occupation = 'NERVER'
 
 
                 if he_has_lichen and has_lichen and unit.occupation == 'ORE_MINER':
