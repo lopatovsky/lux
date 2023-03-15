@@ -279,7 +279,7 @@ vvi get_rubble_around_factory_map(vvi rubble){
            }
            cnt++;
         }
-        acc_map[i][j] = rubble_sum;  // /cnt;
+        acc_map[i][j] = rubble_sum;
     }
     return acc_map;
 }
@@ -1018,7 +1018,7 @@ public:
     std::vector<py::array_t<int>> remove_lichen_action(const string& key_id, bool is_inner){
 
         auto& unit = units[key_id];
-        auto* mother = my_factories[unit.mother_ship_id]; //get_closest_factory( unit.px, unit.py, my_factories);
+        auto* mother = my_factories[unit.mother_ship_id];
 
         // LICHEN specific
         if (mother->lichen_vec.empty()){
@@ -1073,8 +1073,58 @@ public:
         return get_raw_actions(rubble_path_actions);
     }
 
-    std::vector<py::array_t<int>> distract_oponent_action(const string& key_id){
-        std::vector<py::array_t<int>> v; return v;
+    tuple<int,int,int> find_the_pray(const Unit& unit, int px, int py){
+        int best_value = 1e6;
+        Unit * prey = nullptr; int prey_energy = 1e6;
+        for(auto& [key, his_unit] : his_units) {
+            if (!unit.is_heavy && his_unit->is_heavy) continue;
+            int energy = his_unit->power;
+            if (unit.is_heavy && !his_unit->is_heavy) energy = -1;
+
+            int dist = distance(px,py, his_unit->px, his_unit->py);
+
+            int value = dist*2 + energy;
+            if (value < best_value){
+                best_value = value;
+                prey = his_unit;
+                prey_energy = energy;
+            }
+        }
+
+        if (prey == nullptr) return make_tuple(0,0,1e6); // just go home if there is not unit.
+
+        return make_tuple(prey->px, prey->py, prey_energy);
+    }
+
+    std::vector<py::array_t<int>> distract_opponent_action(const string& key_id){
+        auto& unit = units[key_id];
+        auto* mother = my_factories[unit.mother_ship_id];
+
+        //# PREPARE ACTION
+        if (is_in_factory(mother->pos, unit.pos)){
+            auto prepare_actions = prepare_unit(unit, mother);
+            if (!prepare_actions.empty()){
+                return get_raw_actions(prepare_actions);
+            }
+        }
+
+        auto [path_power, path_actions] = shortest_path( step, unit.px, unit.py, mother->px, mother->py, unit.is_heavy);
+
+
+        const auto [rx, ry, prey_power] = find_the_pray(unit, unit.px, unit.py);
+
+        cerr << unit.unit_id <<  " attacks " << rx << " " << ry << endl;
+
+        auto [pray_path_power, pray_path_actions] =
+                     shortest_path( step, unit.px, unit.py, rx, ry, unit.is_heavy);
+
+        if( unit.power < pray_path_power + prey_power){
+            return get_raw_actions(path_actions); // go home
+        }
+
+        return get_raw_actions(pray_path_actions); // follow prey
+
+
     }
 
     std::vector<py::array_t<int>> suicide_action(const string& key_id){
@@ -1107,7 +1157,7 @@ public:
 
         int rubble_acc = rubble_around_factory[i][j];
 
-        return ice_distance * 2000 + ore_distance + rubble_acc;
+        return ice_distance * 2000 + ore_distance * 5 + rubble_acc/5;
         // return ice_distance * 2000 + ore_distance * 5 + rubble_acc - factory_dist;
     }
 
@@ -1158,6 +1208,6 @@ PYBIND11_MODULE(clux, m) {
         .def("mine_ice_action", &CLux::mine_ice_action)
         .def("mine_ore_action", &CLux::mine_ore_action)
         .def("remove_lichen_action", &CLux::remove_lichen_action)
-        .def("distract_oponent_action", &CLux::distract_oponent_action)
+        .def("distract_opponent_action", &CLux::distract_opponent_action)
         .def("suicide_action", &CLux::suicide_action);
 }

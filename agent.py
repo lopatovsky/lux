@@ -616,6 +616,9 @@ class Agent:
         has_lichen = self.state.has_lichen
         he_has_lichen = self.state.he_has_lichen
 
+        if self.state.step < 400:
+            has_lichen = he_has_lichen = False
+
         self.assign_jobs()
 
         for unit_id in units.keys():
@@ -665,8 +668,8 @@ class Agent:
 
                 # TODO implement these:
                 # so far inner lichen eater seem has a little value , but if big is there it would have.
-                if unit.occupation == 'HARAKIRI_SAMURAI' or unit.occupation == 'NERVER':
-                    unit.occupation = 'OUTER_LICHEN_EATER'
+                if unit.occupation == 'HARAKIRI_SAMURAI':
+                    unit.occupation = 'INNER_LICHEN_EATER'
 
 
                 if unit.occupation == "ICE_MINER":
@@ -680,7 +683,7 @@ class Agent:
                 elif unit.occupation == "OUTER_LICHEN_EATER":
                     lux_actions = clux.remove_lichen_action(unit_id, False)
                 elif unit.occupation == "NERVER":  # pro-fighter
-                    lux_actions = clux.distract_oponent_action(unit_id, False)
+                        lux_actions = clux.distract_opponent_action(unit_id)
                 elif unit.occupation == "HARAKIRI_SAMURAI":
                     lux_actions = clux.suicide_action(unit_id, False)
 
@@ -735,6 +738,9 @@ class Agent:
             K = 6
             if factory.cargo["water"] > K *(1000 - self.state.step) + 20:
                 lux_action[factory_id] = 2  # water and grow lichen at the end of the game
+
+            if self.state.step > 150 and self.state.step < 200:
+                 lux_action[factory_id] = 2
 
         # count produced units:
         for factory_id, factory in factories.items():
