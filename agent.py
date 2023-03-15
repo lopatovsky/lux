@@ -591,12 +591,12 @@ class Agent:
                 mother.labor_register[unit.occupation]+=1
                 mother.unit_cnt+= 1
 
-        for factory_key, factory in factories.items():
-            print(factory_key, file=sys.stderr)
-            for occ, cnt in factory.heavy_labor_register.items():
-                print(" [HEAVY]", occ, ":", cnt, file=sys.stderr)
-            for occ, cnt in factory.labor_register.items():
-                print(" ", occ, ":", cnt, file=sys.stderr)
+        # for factory_key, factory in factories.items():
+        #     print(factory_key, file=sys.stderr)
+        #     for occ, cnt in factory.heavy_labor_register.items():
+        #         print(" [HEAVY]", occ, ":", cnt, file=sys.stderr)
+        #     for occ, cnt in factory.labor_register.items():
+        #         print(" ", occ, ":", cnt, file=sys.stderr)
 
 
     # TODO orchestration by ML oracle.

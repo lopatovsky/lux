@@ -425,4 +425,4 @@ class GameState:
                                       f.power, f.pos[0], f.pos[1], f.cargo)
 
         # Called last.
-        self.clux.update_assorted( self.real_step, self.step)
+        self.clux.update_assorted( self.real_step, self.step, self.me == "player_0")

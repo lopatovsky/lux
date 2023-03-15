@@ -270,15 +270,16 @@ vvi get_rubble_around_factory_map(vvi rubble){
     auto acc_map = board(0);
     REP(i,N)REP(j,N){
         int rubble_sum = 0;
+        int cnt = 0;
         for(const auto& [x, y]: iterate_mask({i,j}, factory_surrounding_mask)){
            if (valid(x,y)){
                rubble_sum += rubble[x][y];
            }else{
                rubble_sum += 100;  // Out of boundaries consider to be heavy rubble.
            }
-
+           cnt++;
         }
-        acc_map[i][j] = rubble_sum;
+        acc_map[i][j] = rubble_sum;  // /cnt;
     }
     return acc_map;
 }
@@ -292,6 +293,7 @@ public:
 
         ice_dist = distance_map(ice);
         ore_dist = distance_map(ore);
+        resource_lock = vector<vector<pair<int, string>>>(N, vector<pair<int, string>>(N, {0, ""}));
     }
 
     // A bit more effectively just take in the diff. but maybe who cares.
@@ -332,9 +334,10 @@ public:
         units.erase(key);
     }
 
-    void update_assorted(int real_step_, int step_){
+    void update_assorted(int real_step_, int step_, bool player_0_){
         real_step = real_step_;
         step = step_;
+        player_0 = player_0_;
 
         my_factories.clear();
         his_factories.clear();
@@ -426,6 +429,20 @@ public:
                 }
 
             }
+
+        // FOR ICE & ORE MINING
+
+        REP(i,N) REP(j,N)
+            if (ore[i][j] > 0){
+                ore_vec.PB(MP(i,j));
+            }
+
+        REP(i,N) REP(j,N)
+            if (ore[i][j] > 0){
+                ice_vec.PB(MP(i,j));
+            }
+
+
     }
 
 
@@ -782,6 +799,22 @@ public:
         return actions;
     }
 
+    ii get_resource_location( int t, string unit_id, int px, int py, vii resource_vec){
+        ii best_loc = resource_vec[0];
+        int best_value = 1000000;
+        for( auto&[x,y] : resource_vec){
+            if( resource_lock[x][y].ff >= t && resource_lock[x][y].ss != unit_id ) continue;
+
+            int dist = distance(px ,py , x, y);
+            if (dist < best_value){
+                best_loc = {x,y};
+                best_value = dist;
+            }
+        }
+
+        return best_loc;
+    }
+
     std::vector<py::array_t<int>> mine_resource_action(string key_id, int resource_id){
         auto& unit = units[key_id];
         auto* mother = get_closest_factory( unit.px, unit.py, my_factories);
@@ -794,7 +827,7 @@ public:
             }
         }
 
-        auto [path_power, path_actions] = shortest_path( step, unit.px, unit.py, mother->px, mother->py, unit.is_heavy);
+        auto [path_power, path_actions] = shortest_path(step, unit.px, unit.py, mother->px, mother->py, unit.is_heavy);
 
         //# GO HOME ACTION
         int energy_treshold = unit.is_heavy? 240 : 20;  // energy of four digs.
@@ -803,13 +836,13 @@ public:
         }
 
         // Only this one line is different, lol:
-        ii resource_loc = shortest_path_to_dig(step, unit.px, unit.py, (resource_id? ore: ice), unit.is_heavy);
+        ii resource_loc = get_resource_location( step, unit.unit_id, unit.px, unit.py, (resource_id? ore_vec: ice_vec));
 
         auto [resource_power, resource_path_actions] =
                      shortest_path( step, unit.px, unit.py, resource_loc.xx, resource_loc.yy, unit.is_heavy);
 
-        auto [worst_case_home_power, home_actions] =
-                     shortest_path( 30 /*worst_case*/, resource_loc.xx, resource_loc.yy, mother->px, mother->py, unit.is_heavy);
+        auto [worst_case_home_power, home_actions] = shortest_path(
+                            30 /*worst_case*/, resource_loc.xx, resource_loc.yy, mother->px, mother->py, unit.is_heavy);
         int rest_power = unit.power - (path_power + worst_case_home_power);
 
         int dig_number = rest_power / (unit.is_heavy ? 50 : 5); // 60 -> 50 because unit gets some energy from sun.
@@ -834,6 +867,8 @@ public:
         if (dig_number){
             resource_path_actions.PB(dig_action(dig_number));
         }
+
+        resource_lock[resource_loc.xx][resource_loc.yy] = {step + dig_number + 5,  unit.unit_id};  // basic lock
 
         return get_raw_actions(resource_path_actions);
     }
@@ -1073,6 +1108,7 @@ public:
         int rubble_acc = rubble_around_factory[i][j];
 
         return ice_distance * 2000 + ore_distance + rubble_acc;
+        // return ice_distance * 2000 + ore_distance * 5 + rubble_acc - factory_dist;
     }
 
     ii place_factory(){
@@ -1095,7 +1131,10 @@ private:
     std::unordered_map <std::string, Unit*> my_units, his_units;
 
     int real_step, step, factories_per_team;
+    bool player_0;
     vvi ice, ore, rubble, lichen, lichen_strains;
+    vector<vector<pair<int,string>>> resource_lock;
+    vii ore_vec, ice_vec;
 
     vvi ice_dist, ore_dist, rubble_around_factory, assigned_rubbles;
 };
