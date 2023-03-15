@@ -836,7 +836,8 @@ public:
         }
 
         // Only this one line is different, lol:
-        ii resource_loc = get_resource_location( step, unit.unit_id, unit.px, unit.py, (resource_id? ore_vec: ice_vec));
+        // ii resource_loc = get_resource_location( step, unit.unit_id, unit.px, unit.py, (resource_id? ore_vec: ice_vec));
+        ii resource_loc = shortest_path_to_dig(step, unit.px, unit.py, (resource_id? ore: ice), unit.is_heavy);
 
         auto [resource_power, resource_path_actions] =
                      shortest_path( step, unit.px, unit.py, resource_loc.xx, resource_loc.yy, unit.is_heavy);
