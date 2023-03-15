@@ -11,8 +11,17 @@ import clux
 
 from lux.utils import code_to_direction, next_move, valid, distance
 
+def equal_queues(q1, q2):
+    if len(q1) != len(q2):
+        return False
+    for x,y in zip(q1,q2):
+        if not np.array_equal(x,y):
+            return False
+    return True
+
 class Unit:
     def __init__(self, obs, time, factory_loc_dict, is_my):
+        self.failed_actions = False
         self.update(obs, time)
         self.is_my = is_my
         # mother factory location
@@ -32,6 +41,10 @@ class Unit:
         self.pos = obs["pos"]
         self.cargo = obs["cargo"]
         self.action_queue = obs["action_queue"]
+
+        if self.failed_actions:
+            self.action_queue = []
+
 
 class Factory:
     def __init__(self, obs, state, time, is_my = False):
@@ -61,7 +74,7 @@ class Factory:
             kid.mother_ship = step_mother
             step_mother.kids.append(kid)
             kid.init_pos = step_mother.pos  # Brainwashing :)
-            kid.activity_queue = []
+            kid.action_queue = []
             kid.occupation = "NERVER"
 
 
@@ -276,7 +289,7 @@ class GameState:
 
     def build_no_go_map(self):
         """Opponent factories"""
-        no_go_map = np.zeros((48, 48))
+        self.no_go_map = np.zeros((48, 48))
         for factory in self.his_factories.values():
             for i in [-1,0,1]:
                 for j in [-1,0,1]:

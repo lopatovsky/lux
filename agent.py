@@ -13,7 +13,9 @@ from wrappers import LuxObservationWrapper, LuxController
 
 from game_state import GameState
 
-
+def print_board(b):
+    np.set_printoptions(threshold=np.inf)
+    print(b.T, file=sys.stderr)
 
 
 def AdjToFactory(x, y, i, j):
@@ -370,7 +372,7 @@ class Agent:
 
     def win_collision(self, unit, move_code, c_unit, collision_code, is_dodge):
         # don't kill powerless, don't disturb working friend. (except heavy)
-        if c_unit.is_my and not c_unit.is_heavy:
+        if c_unit.is_my and (unit.is_heavy == c_unit.is_heavy):
             # if dodging, we do not know if the unit will learn about our action, so always false.
             if is_dodge:
                 return False
@@ -479,6 +481,7 @@ class Agent:
         #             min_dist = dist
         #             dir = code
         # else:
+
         dir = move_codes[np.random.randint(low=0, high=len(move_codes))]
 
         dx, dy = code_to_direction(dir)
@@ -590,7 +593,10 @@ class Agent:
 
             if len(unit.action_queue) == 0:
 
-                self.redo_cnt +=1
+                if unit.failed_actions:
+                    unit.failed_actions = False
+
+                # self.redo_cnt +=1
                 # print( "redo: ", self.redo_cnt , file=sys.stderr)
 
                 # TODO orchestration by ML oracle.
@@ -630,19 +636,26 @@ class Agent:
 
 
                 if unit.occupation == "ICE_MINER":
-                    lux_action[unit_id] = self.mine_ice_action(unit)  # clux.mine_ice_action(unit_id)
+                    lux_actions = self.mine_ice_action(unit)  # clux.mine_ice_action(unit_id)
                 elif unit.occupation == "ORE_MINER":
-                    lux_action[unit_id] = clux.mine_ore_action(unit_id)
+                    lux_actions = clux.mine_ore_action(unit_id)
                 elif unit.occupation == "RUBBLE_EATER":
-                    lux_action[unit_id] = clux.remove_rubble_action(unit_id)
+                    lux_actions = clux.remove_rubble_action(unit_id)
                 elif unit.occupation == "INNER_LICHEN_EATER":
-                    lux_action[unit_id] = clux.remove_lichen_action(unit_id, True)
+                    lux_actions = clux.remove_lichen_action(unit_id, True)
                 elif unit.occupation == "OUTER_LICHEN_EATER":
-                    lux_action[unit_id] = clux.remove_lichen_action(unit_id, False)
+                    lux_actions = clux.remove_lichen_action(unit_id, False)
                 elif unit.occupation == "NERVER":  # pro-fighter
-                    lux_action[unit_id] = clux.distract_oponent_action(unit_id, False)
+                    lux_actions = clux.distract_oponent_action(unit_id, False)
                 elif unit.occupation == "HARAKIRI_SAMURAI":
-                    lux_action[unit_id] = clux.suicide_action(unit_id, False)
+                    lux_actions = clux.suicide_action(unit_id, False)
+
+
+                if (unit.is_heavy and unit.power < 10) or (not unit.is_heavy and unit.power < 1):
+                    unit.failed_actions = True
+                    continue
+
+                lux_action[unit_id] = lux_actions
 
         # occ_counts = {}
         # for unit in units.values():
@@ -661,6 +674,7 @@ class Agent:
             if len(action) != 0:
                 lux_action[unit_id] = action
 
+
         # FACTORIES ACTION
 
         # creates a heavy unit.
@@ -670,7 +684,7 @@ class Agent:
         # creates a light unit
         else:
             for factory_id, factory in factories.items():
-                if factory.cargo["metal"] < 10 and factory.power < 50:
+                if factory.cargo["metal"] < 10 or factory.power < 50:
                     continue
                 lux_action[factory_id] = 0
 
