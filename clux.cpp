@@ -1113,8 +1113,6 @@ public:
 
         const auto [rx, ry, prey_power] = find_the_pray(unit, unit.px, unit.py);
 
-        cerr << unit.unit_id <<  " attacks " << rx << " " << ry << endl;
-
         auto [pray_path_power, pray_path_actions] =
                      shortest_path( step, unit.px, unit.py, rx, ry, unit.is_heavy);
 
