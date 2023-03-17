@@ -5,6 +5,7 @@ from itertools import chain
 from collections import defaultdict
 
 import numpy as np
+import numpy.typing as npt
 import torch as th
 
 from lux.kit import process_action
@@ -27,10 +28,9 @@ def AdjToFactory(x, y, i, j):
     return False
 
 class Agent:
-    def __init__(self, ppo_model, state: GameState) -> None:
+    def __init__(self, state: GameState) -> None:
         np.random.seed(0)
         random.seed(0)
-        self.ppo_model = ppo_model
         self.state = state
 
         # TODO why ObsWrapper is not init here
@@ -58,11 +58,22 @@ class Agent:
         water = min(state.cfg.INIT_WATER_METAL_PER_FACTORY, my_obs["water"])
         return dict(spawn=pos, metal=metal, water=water)
 
+    def build_observations_for_PPO(self):
+        obs_vec = np.zeros(10) # for 10 features.
+        # like step/1000
+
+        # TODO implement something here.
+
+        return obs_vec
+
     def act(self):
 
-        # obs = LuxObservationWrapper.convert_obs(self.state)
-        #
-        # obs = th.from_numpy(obs).float()
+        # replaces observation wrapper.
+        obs = self.build_observations_for_PPO()
+
+        obs = th.from_numpy(obs).float()
+
+        # TODO implement reading data from model
         # with th.no_grad():
         #
         #     # to improve performance, we have a rule based action mask generator for the controller used
@@ -81,7 +92,13 @@ class Agent:
         #     logits[~action_mask] = -1e8  # mask out invalid actions
         #     dist = th.distributions.Categorical(logits=logits)
         #     actions = dist.sample().cpu().numpy()  # shape (1, 1)
+
         #
+        actions = [np.zeros(10)]
+
+        # here the actions from PPO are passed down. so the method replaces controller.
+        return self.rule_based_actions(actions[0])
+
         # # use our controller which we trained with in train.py to generate a Lux S2 compatible action
         # lux_action = self.controller.action_to_lux_action(actions[0])
         #
@@ -94,7 +111,7 @@ class Agent:
         #
         # return lux_action
 
-        return self.rule_based_actions()
+        #return self.rule_based_actions()
 
     def compute_move_price(self, pos, move_actions):
         # TODO maybe the best possible path not some random.
@@ -450,10 +467,10 @@ class Agent:
                     small_risk_dir_codes.append(code)
         length = len(safe_dir_codes)
         if length == 0:
-            print(unit.unit_id, ":potentially trapped", file=sys.stderr)
+            #print(unit.unit_id, ":potentially trapped", file=sys.stderr)
             length = len(small_risk_dir_codes)
             if length == 0:
-                print( unit.unit_id, ": trapped", file=sys.stderr)
+                #print( unit.unit_id, ": trapped", file=sys.stderr)
                 return self.process_dodge_move(unit, valid_codes)
             else:
                 return self.process_dodge_move( unit, small_risk_dir_codes)
@@ -600,7 +617,9 @@ class Agent:
 
 
     # TODO orchestration by ML oracle.
-    def rule_based_actions(self):
+    def rule_based_actions(self, ppo_action: npt.NDArray):
+        #TODO use ppo_action to do stuff. Its numpy array of network outputs
+
         lux_action = dict()
 
         clux = self.state.clux
@@ -686,6 +705,8 @@ class Agent:
                         lux_actions = clux.distract_opponent_action(unit_id)
                 elif unit.occupation == "HARAKIRI_SAMURAI":
                     lux_actions = clux.suicide_action(unit_id, False)
+                elif unit.occupation == "LAZY":
+                    lux_actions = clux.waiting_action(unit_id, False) # sits and grows energy levels to attack at the end.
 
 
                 if (unit.is_heavy and unit.power < 10) or (not unit.is_heavy and unit.power < 1):

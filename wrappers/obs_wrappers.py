@@ -20,6 +20,8 @@ class LuxObservationWrapper(gym.ObservationWrapper):
             -999, 999, shape=(LuxObservationWrapper.observation_features,))
 
     def observation(self, obs):
+        # should call return agent.build_observations_for_PPO()
+
         return LuxObservationWrapper.convert_obs(obs, self.env.state.env_cfg)
 
     # we make this method static so the submission/evaluation code can use this as well

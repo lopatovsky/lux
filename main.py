@@ -32,9 +32,10 @@ def agent_fn(observation, configurations):
 
     if state is None:
         #print("inpu", file=sys.stderr)
-        state = GameState(observation, EnvConfig.from_dict(configurations["env_cfg"]))
+        state = GameState(EnvConfig.from_dict(configurations["env_cfg"]))
+        state.init_update(observation)
         ppo_model = None # TODO populate
-        agent_dict[player] = Agent(ppo_model, state)
+        agent_dict[player] = Agent(state)
     else:
         state.update(observation)
 

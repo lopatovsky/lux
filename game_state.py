@@ -190,29 +190,40 @@ def init_convolutions(state, rubble, ore, factories, his_factories):
 
 class GameState:
 
-    def __init__(self, obs, cfg):
-        # These variables are constant during the game or only appear in initial obs.
-        self.me = obs.player
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    def init_update(self, obs, agent = "", real_step_ = 0):
+        if agent == "":
+            # code from main
+            self.me = obs.player
+            real_step = obs.real_step
+            # TODO skipped for now
+            # remaining_time = obs.remainingOverageTime
+            obs = obs.obs
+        else:
+            self.me = agent
+            real_step = real_step_
+
         self.him = "player_1"
         if self.me == self.him:
             self.him = "player_0"
 
-        self.cfg = cfg
 
-        self.ice = np.array(obs.obs["board"]["ice"])
-        self.ore = np.array(obs.obs["board"]["ore"])
+        self.ice = np.array(obs["board"]["ice"])
+        self.ore = np.array(obs["board"]["ore"])
 
         self.ice_distance = build_distance_map(self.ice, 1)
 
-        self.factories_per_team = obs.obs["board"]["factories_per_team"]
+        self.factories_per_team = obs["board"]["factories_per_team"]
 
         # Initial set of variables. Later they come as a diff
-        self.board = obs.obs["board"]
-        self.rubble = np.array( self.board["rubble"])
-        self.lichen = np.array( self.board["lichen"])
-        self.lichen_strains = np.array( self.board["lichen_strains"])
+        self.board = obs["board"]
+        self.rubble = np.array(self.board["rubble"])
+        self.lichen = np.array(self.board["lichen"])
+        self.lichen_strains = np.array(self.board["lichen_strains"])
 
-        #self.rubble_distance = build_distance_map(self.rubble, 1)
+        # self.rubble_distance = build_distance_map(self.rubble, 1)
 
         self.valid_spawns_mask = np.array(self.board["valid_spawns_mask"])
 
@@ -232,11 +243,14 @@ class GameState:
 
         self.clux = clux.CLux(self.ice, self.ore, self.factories_per_team)
 
-        self.set_variable_obs(obs)
+        self.set_variable_obs(obs, real_step)
 
-    def update(self, obs):
+    def update(self, obs, agent = "", real_step = 0):
         # self.previous_state = copy.copy(self)
-        self.set_variable_obs(obs)
+        if agent == "":
+            self.set_variable_obs(obs.obs, obs.real_step)
+        else:
+            self.set_variable_obs(obs, real_step)
 
     def update_board(self, board, update_vec):
         for loc, value in update_vec.items():
@@ -320,25 +334,23 @@ class GameState:
                     self.he_has_lichen = True
 
 
-    def set_variable_obs(self, obs):
-
-        # TODO remove this once converted in controller.
-        self.obs = obs.obs
+    def set_variable_obs(self, obs, real_step):
 
         # from 0
-        self.real_step = obs.step
-        # from -7 to 1000
-        self.step = obs.obs["real_env_steps"]
+        self.real_step = real_step
 
-        units_data = obs.obs["units"][self.me]
+        # from -7 to 1000
+        self.step = obs["real_env_steps"]
+
+        units_data = obs["units"][self.me]
         self.process_units( units_data, self.units )
 
-        his_units_data = obs.obs["units"][self.him]
+        his_units_data = obs["units"][self.him]
         self.process_units( his_units_data, self.his_units, is_my = False)
 
         # self.units_map = self.create_units_map(self.units, self.his_units)
 
-        factories_data = obs.obs["factories"][self.me]
+        factories_data = obs["factories"][self.me]
         for factory_id in factories_data.keys():
             if factory_id in self.factories:
                 self.factories[factory_id].update(factories_data[factory_id], self.real_step)
@@ -357,7 +369,7 @@ class GameState:
             self.clux.remove_zombie_factory(key)
             death_mother.move_kids_to(next(iter(self.factories.values())))
 
-        his_factories_data = obs.obs["factories"][self.him]
+        his_factories_data = obs["factories"][self.him]
         for factory_id in his_factories_data:
             if factory_id in self.his_factories:
                 self.his_factories[factory_id].update(his_factories_data[factory_id], self.real_step)
@@ -374,19 +386,26 @@ class GameState:
         if len(delete_keys) > 0:
             self.build_no_go_map()
 
+        # print("______", real_step)
+        # print(obs)
 
-        if  len(obs.obs["teams"]) > 0:
-            self.my_team = obs.obs["teams"][self.me]
-            self.his_team = obs.obs["teams"][self.him]
+        if  len(obs["teams"]) > 0:
+            self.my_team = obs["teams"][self.me]
+            self.his_team = obs["teams"][self.him]
 
         # print("step:", self.real_step, self.board.keys(), file=sys.stderr)
 
         if self.real_step > 0:
-            self.board = obs.obs["board"]
+            self.board = obs["board"]
 
-            self.update_board( self.rubble, self.board["rubble"])
-            self.update_board( self.lichen, self.board["lichen"])
-            self.update_board( self.lichen_strains, self.board["lichen_strains"])
+            if isinstance(self.board["rubble"], np.ndarray):
+                self.rubble = self.board["rubble"]
+                self.lichen = self.board["lichen"]
+                self.lichen_strains = self.board["lichen_strains"]
+            else:
+                self.update_board( self.rubble, self.board["rubble"])
+                self.update_board( self.lichen, self.board["lichen"])
+                self.update_board( self.lichen_strains, self.board["lichen_strains"])
 
             #self.rubble_distance = build_distance_map(self.rubble, 1)
 
@@ -404,8 +423,6 @@ class GameState:
             self.build_chick_chick_vec()
             for factory in self.factories.values():
                 self.factory_loc_dict[(factory.pos[0], factory.pos[1])] = factory
-
-        self.bonus_time_left = obs.remainingOverageTime
 
         self.clux.update_rubble(self.rubble)
         self.clux.update_lichen(self.lichen, self.lichen_strains)
